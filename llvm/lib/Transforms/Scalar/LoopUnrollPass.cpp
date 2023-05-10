@@ -1569,6 +1569,7 @@ PreservedAnalyses LoopFullUnrollPass::run(Loop &L, LoopAnalysisManager &AM,
   return getLoopPassPreservedAnalyses();
 }
 
+static int successLoopUnrollCount = 0;
 PreservedAnalyses LoopUnrollPass::run(Function &F,
                                       FunctionAnalysisManager &AM) {
   auto &LI = AM.getResult<LoopAnalysis>(F);
@@ -1648,6 +1649,7 @@ PreservedAnalyses LoopUnrollPass::run(Function &F,
     // Clear any cached analysis results for L if we removed it completely.
     if (LAM && Result == LoopUnrollResult::FullyUnrolled)
       LAM->clear(L, LoopName);
+    if(Result != LoopUnrollResult::Unmodified) llvm::outs() << "ZTY: Success LoopUnroll at: " << LoopName << ". successLoopUnrollCount: " << ++successLoopUnrollCount << "\n";
   }
 
   if (!Changed)
