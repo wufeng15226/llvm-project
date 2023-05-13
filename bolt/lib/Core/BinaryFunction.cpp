@@ -4484,6 +4484,44 @@ void BinaryFunction::printLoopInfo(raw_ostream &OS) const {
   OS << "Maximum nested loop depth: " << BLI->MaximumDepth << "\n\n";
 }
 
+void BinaryFunction::printLoopInstructions(raw_ostream &OS) {
+  if (!opts::shouldPrint(*this))
+    return;
+  if (isLoopFree()) 
+    return;
+  OS << "Loop Instructions for Function \"" << *this << "\"\n";
+  std::stack<BinaryLoop *> St;
+  for (BinaryLoop *L : *BLI)
+    St.push(L);
+  while (!St.empty()) {
+    BinaryLoop *L = St.top();
+    St.pop();
+
+    for (BinaryLoop *Inner : *L)
+      St.push(Inner);
+
+    OS << (L->getLoopDepth() > 1 ? "Nested" : "Outer")
+       << " loop header: " << L->getHeader()->getName();
+    OS << "\n";
+    OS << "Loop basic blocks: ";
+    OS << "\n";
+    ListSeparator LS;
+    for (BinaryBasicBlock *BB : L->blocks()) {
+      OS << LS << BB->getName();
+      OS << "\n";
+      for (auto &Inst : *BB) {
+        OS << Inst << "\n";
+        BC.printInstruction(OS, Inst);
+      }
+    }
+    OS << "\n";
+  }
+  OS << "Loop Instructions End" << "\n";
+  OS << "Total number of loops: " << BLI->TotalLoops << "\n";
+  OS << "Number of outer loops: " << BLI->OuterLoops << "\n";
+  OS << "Maximum nested loop depth: " << BLI->MaximumDepth << "\n\n";
+}
+
 bool BinaryFunction::isAArch64Veneer() const {
   if (empty() || hasIslandsInfo())
     return false;
