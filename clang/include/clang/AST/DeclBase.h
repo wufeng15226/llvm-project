@@ -644,6 +644,9 @@ public:
     return getModuleOwnershipKind() > ModuleOwnershipKind::VisibleWhenImported;
   }
 
+  /// Whether this declaration comes from another module unit.
+  bool isInAnotherModuleUnit() const;
+
   /// FIXME: Implement discarding declarations actually in global module
   /// fragment. See [module.global.frag]p3,4 for details.
   bool isDiscardedInGlobalModuleFragment() const { return false; }
@@ -2537,10 +2540,8 @@ public:
                  D == LastDecl);
   }
 
-  bool setUseQualifiedLookup(bool use = true) const {
-    bool old_value = DeclContextBits.UseQualifiedLookup;
+  void setUseQualifiedLookup(bool use = true) const {
     DeclContextBits.UseQualifiedLookup = use;
-    return old_value;
   }
 
   bool shouldUseQualifiedLookup() const {
