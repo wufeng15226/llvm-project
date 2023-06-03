@@ -25,6 +25,7 @@ target_link_libraries(llvm-bolt
   LLVMBOLTProfile
   LLVMBOLTRewrite
   LLVMBOLTUtils
+  nlohmann_json::nlohmann_json
   )
 
 add_bolt_tool_symlink(perf2bolt llvm-bolt)

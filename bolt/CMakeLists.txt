@@ -4,6 +4,8 @@ set(BOLT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(BOLT_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 17)
 
+find_package(nlohmann_json)
+
 # Determine default set of targets to build -- the intersection of
 # those BOLT supports and those LLVM is targeting.
 set(BOLT_TARGETS_TO_BUILD_all "AArch64;X86")

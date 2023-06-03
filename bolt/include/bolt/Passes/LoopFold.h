@@ -2,6 +2,8 @@
 #define BOLT_PASSES_LOOPFOLD_H
 
 #include "bolt/Passes/BinaryPasses.h"
+#include <nlohmann/json.hpp>
+#include <fstream>
 
 namespace llvm {
 namespace bolt {
@@ -16,6 +18,7 @@ public:
   void runOnFunctions(BinaryContext &BC) override;
   bool runOnFunction(BinaryFunction &Function);
   bool runOnFunction(BinaryFunction &Function, raw_ostream &OS);
+  bool runOnFunction(BinaryFunction &Function, nlohmann::json &json);
 };
 
 } // namespace bolt

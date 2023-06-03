@@ -4510,7 +4510,7 @@ void BinaryFunction::printLoopInstructions(raw_ostream &OS) {
       OS << LS << BB->getName();
       OS << "\n";
       for (auto &Inst : *BB) {
-        OS << Inst << "\n";
+        // OS << Inst << "\n";
         BC.printInstruction(OS, Inst);
       }
     }
@@ -4520,6 +4520,55 @@ void BinaryFunction::printLoopInstructions(raw_ostream &OS) {
   OS << "Total number of loops: " << BLI->TotalLoops << "\n";
   OS << "Number of outer loops: " << BLI->OuterLoops << "\n";
   OS << "Maximum nested loop depth: " << BLI->MaximumDepth << "\n\n";
+}
+
+void BinaryFunction::serializeLoopInstructions(nlohmann::json& json) {
+  if (!opts::shouldPrint(*this))
+    return;
+  if (isLoopFree()) 
+    return;
+  nlohmann::json functionJson = nlohmann::json::array();
+
+  std::stack<BinaryLoop *> St;
+  for (BinaryLoop *L : *BLI)
+    St.push(L);
+  while (!St.empty()) {
+    BinaryLoop *L = St.top();
+    St.pop();
+
+    for (BinaryLoop *Inner : *L)
+      St.push(Inner);
+    nlohmann::json loopJson = {
+      {"loopDepth", L->getLoopDepth()},
+      {"loopHeader", L->getHeader()->getName()},
+      {"loopBasicBlocks", nlohmann::json::array()}
+    };
+    
+    ListSeparator LS;
+    for (BinaryBasicBlock *BB : L->blocks()) {
+      nlohmann::json basicBlockJson = {
+        {"name", BB->getName()},
+        {"instructions", nlohmann::json::array()}
+      };
+      for (auto &Inst : *BB) {
+        std::string s;
+        raw_string_ostream ss(s);
+        // OS << Inst << "\n";
+        BC.printInstruction(ss, Inst);
+        s = ss.str().substr(15);
+        s = s.substr(0, s.length() - 1);
+        basicBlockJson["instructions"].push_back(s);
+      }
+      loopJson["loopBasicBlocks"].push_back(basicBlockJson);
+    }
+    functionJson.push_back(loopJson);
+  }
+  // OS << "Loop Instructions End" << "\n";
+  // OS << "Total number of loops: " << BLI->TotalLoops << "\n";
+  // OS << "Number of outer loops: " << BLI->OuterLoops << "\n";
+  // OS << "Maximum nested loop depth: " << BLI->MaximumDepth << "\n\n";
+
+  json[this->getPrintName()] = functionJson;
 }
 
 bool BinaryFunction::isAArch64Veneer() const {

@@ -54,6 +54,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 using namespace llvm::object;
 
@@ -867,6 +868,9 @@ public:
 
   /// Print loop Instructions.
   void printLoopInstructions(raw_ostream &OS);
+
+  /// serialize loop Instructions.
+  void serializeLoopInstructions(nlohmann::json &json);
 
   /// View CFG in graphviz program
   void viewGraph() const;
