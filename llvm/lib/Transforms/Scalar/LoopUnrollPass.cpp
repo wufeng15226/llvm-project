@@ -1569,7 +1569,11 @@ PreservedAnalyses LoopFullUnrollPass::run(Loop &L, LoopAnalysisManager &AM,
   return getLoopPassPreservedAnalyses();
 }
 
+static int loopCount = 0;
+static int innermostLoopCount = 0;
+static int innermostSimplyLoopCount = 0; // one BB
 static int successLoopUnrollCount = 0;
+static int successFullyLoopUnrollCount = 0;
 PreservedAnalyses LoopUnrollPass::run(Function &F,
                                       FunctionAnalysisManager &AM) {
   auto &LI = AM.getResult<LoopAnalysis>(F);
@@ -1621,6 +1625,10 @@ PreservedAnalyses LoopUnrollPass::run(Function &F,
     Loop *ParentL = L.getParentLoop();
 #endif
 
+    ++loopCount;
+    if(L.isInnermost()) ++innermostLoopCount;
+    if(L.isInnermost() && L.getNumBlocks() == 1) ++innermostSimplyLoopCount;
+    
     // Check if the profile summary indicates that the profiled application
     // has a huge working set size, in which case we disable peeling to avoid
     // bloating it further.
@@ -1649,8 +1657,16 @@ PreservedAnalyses LoopUnrollPass::run(Function &F,
     // Clear any cached analysis results for L if we removed it completely.
     if (LAM && Result == LoopUnrollResult::FullyUnrolled)
       LAM->clear(L, LoopName);
-    if(Result != LoopUnrollResult::Unmodified) llvm::outs() << "ZTY: Success LoopUnroll at: " << LoopName << ". successLoopUnrollCount: " << ++successLoopUnrollCount << "\n";
+
+    if(Result != LoopUnrollResult::Unmodified) ++successLoopUnrollCount;
+    if(Result == LoopUnrollResult::FullyUnrolled) ++successFullyLoopUnrollCount;
   }
+
+  llvm::outs() << "ZTY: Loop Count: " << loopCount << "\n";
+  llvm::outs() << "ZTY: Innermost Loop Count: " << innermostLoopCount << "\n";
+  llvm::outs() << "ZTY: Innermost Simply Loop Count: " << innermostSimplyLoopCount << "\n";
+  llvm::outs() << "ZTY: Success LoopUnroll: " << successLoopUnrollCount << "\n";
+  llvm::outs() << "ZTY: Success Fullly LoopUnroll: " << successFullyLoopUnrollCount << "\n";
 
   if (!Changed)
     return PreservedAnalyses::all();
