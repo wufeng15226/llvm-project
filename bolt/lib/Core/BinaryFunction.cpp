@@ -4571,6 +4571,23 @@ void BinaryFunction::serializeLoopInstructions(nlohmann::json& json) {
   json[this->getPrintName()] = functionJson;
 }
 
+void BinaryFunction::loopUnroll(){
+  if (!opts::shouldPrint(*this))
+    return;
+  if (isLoopFree()) 
+    return;
+  std::stack<BinaryLoop *> St;
+  for (BinaryLoop *L : *BLI)
+    St.push(L);
+  while (!St.empty()) {
+    BinaryLoop *L = St.top();
+    St.pop();
+
+    for (BinaryLoop *Inner : *L)
+      St.push(Inner);
+  }
+}
+
 bool BinaryFunction::isAArch64Veneer() const {
   if (empty() || hasIslandsInfo())
     return false;

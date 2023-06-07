@@ -94,6 +94,7 @@ bolt/lib/Passes/JTFootprintReduction.cpp
 bolt/lib/Passes/LivenessAnalysis.cpp
 bolt/lib/Passes/LoopInversionPass.cpp
 bolt/lib/Passes/LoopFold.cpp
+bolt/lib/Passes/LoopUnroll.cpp
 bolt/lib/Passes/PettisAndHansen.cpp
 bolt/lib/Passes/StackAllocationAnalysis.cpp
 bolt/lib/Passes/StackPointerTracking.cpp

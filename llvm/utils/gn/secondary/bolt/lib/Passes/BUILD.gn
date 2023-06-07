@@ -38,7 +38,8 @@ static_library("Passes") {
     "LivenessAnalysis.cpp",
     "LongJmp.cpp",
     "LoopInversionPass.cpp",
-    "LoopFold.cpp"
+    "LoopFold.cpp",
+    "LoopUnroll.cpp",
     "MCF.cpp",
     "PLTCall.cpp",
     "PatchEntries.cpp",

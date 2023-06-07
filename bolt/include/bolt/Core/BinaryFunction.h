@@ -872,6 +872,9 @@ public:
   /// serialize loop Instructions.
   void serializeLoopInstructions(nlohmann::json &json);
 
+  /// loop unroll.
+  void loopUnroll();
+
   /// View CFG in graphviz program
   void viewGraph() const;
 
