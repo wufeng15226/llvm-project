@@ -869,8 +869,14 @@ public:
   /// Print loop Instructions.
   void printLoopInstructions(raw_ostream &OS);
 
+  /// Print loop profiler information.
+  void printLoopProfiler(raw_ostream &OS);
+
   /// serialize loop Instructions.
   void serializeLoopInstructions(nlohmann::json &json);
+
+  /// serialize loop Instructions.
+  void serializeLoopProfiler(nlohmann::json &json);
 
   /// loop unroll.
   void loopUnroll();

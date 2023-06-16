@@ -4522,6 +4522,108 @@ void BinaryFunction::printLoopInstructions(raw_ostream &OS) {
   OS << "Maximum nested loop depth: " << BLI->MaximumDepth << "\n\n";
 }
 
+void BinaryFunction::printLoopProfiler(raw_ostream &OS) {
+  if (!opts::shouldPrint(*this))
+    return;
+  if (isLoopFree()) 
+    return;
+  OS << "Function \"" << *this << "\""
+     << " ExecutionCount: " << this->getExecutionCount() << "\n";
+  std::stack<BinaryLoop *> St;
+  for (BinaryLoop *L : *BLI)
+    St.push(L);
+  while (!St.empty()) {
+    BinaryLoop *L = St.top();
+    St.pop();
+
+    for (BinaryLoop *Inner : *L)
+      St.push(Inner);
+
+    OS << (L->getLoopDepth() > 1 ? "Nested" : "Outer")
+       << " loop header: " << L->getHeader()->getName() << "\n"
+       << " ExecutionCount: " << L->getHeader()->getExecutionCount() << "\n"
+       << " TotalBackEdgeCount: " << L->TotalBackEdgeCount << "\n"
+       << " EntryCount: " << L->EntryCount << "\n"
+       << " ExitCount: " << L->ExitCount << "\n"
+       << " Average iters per entry: " << format("%.4lf", (double)L->TotalBackEdgeCount / L->EntryCount);
+    OS << "\n";
+    OS << "Loop basic blocks: ";
+    OS << "\n";
+    ListSeparator LS;
+    for (BinaryBasicBlock *BB : L->blocks()) {
+      OS << LS << BB->getName();
+      OS << "\n";
+      for (auto &Inst : *BB) {
+        // OS << Inst << "\n";
+        BC.printInstruction(OS, Inst);
+      }
+    }
+    OS << "\n";
+  }
+  OS << "Loop Instructions End" << "\n";
+  OS << "Total number of loops: " << BLI->TotalLoops << "\n";
+  OS << "Number of outer loops: " << BLI->OuterLoops << "\n";
+  OS << "Maximum nested loop depth: " << BLI->MaximumDepth << "\n\n";
+}
+
+void BinaryFunction::serializeLoopProfiler(nlohmann::json& json) {
+  if (!opts::shouldPrint(*this))
+    return;
+  if (isLoopFree()) 
+    return;
+  nlohmann::json functionJson = {
+    {"name", this->getPrintName()},
+    {"ExecutionCount", this->getExecutionCount()},
+    {"loops", nlohmann::json::array()}
+  };
+
+  std::stack<BinaryLoop *> St;
+  for (BinaryLoop *L : *BLI)
+    St.push(L);
+  while (!St.empty()) {
+    BinaryLoop *L = St.top();
+    St.pop();
+
+    for (BinaryLoop *Inner : *L)
+      St.push(Inner);
+    nlohmann::json loopJson = {
+      {"loopDepth", L->getLoopDepth()},
+      {"loopHeader", L->getHeader()->getName()},
+      {"ExecutionCount", L->getHeader()->getExecutionCount()},
+      {"TotalBackEdgeCount", L->TotalBackEdgeCount},
+      {"EntryCount", L->EntryCount},
+      {"ExitCount", L->ExitCount},
+      {"AverageItersPerEntry", (double)L->TotalBackEdgeCount / L->EntryCount},
+      {"loopBasicBlocks", nlohmann::json::array()}
+    };
+    
+    ListSeparator LS;
+    for (BinaryBasicBlock *BB : L->blocks()) {
+      nlohmann::json basicBlockJson = {
+        {"name", BB->getName()},
+        {"instructions", nlohmann::json::array()}
+      };
+      for (auto &Inst : *BB) {
+        std::string s;
+        raw_string_ostream ss(s);
+        // OS << Inst << "\n";
+        BC.printInstruction(ss, Inst);
+        s = ss.str().substr(15);
+        s = s.substr(0, s.length() - 1);
+        basicBlockJson["instructions"].push_back(s);
+      }
+      loopJson["loopBasicBlocks"].push_back(basicBlockJson);
+    }
+    functionJson["loops"].push_back(loopJson);
+  }
+  // OS << "Loop Instructions End" << "\n";
+  // OS << "Total number of loops: " << BLI->TotalLoops << "\n";
+  // OS << "Number of outer loops: " << BLI->OuterLoops << "\n";
+  // OS << "Maximum nested loop depth: " << BLI->MaximumDepth << "\n\n";
+
+  json[this->getPrintName()] = functionJson;
+}
+
 void BinaryFunction::serializeLoopInstructions(nlohmann::json& json) {
   if (!opts::shouldPrint(*this))
     return;

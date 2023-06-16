@@ -18,6 +18,7 @@ public:
   void runOnFunctions(BinaryContext &BC) override;
   bool runOnFunction(BinaryFunction &Function);
   bool runOnFunction(BinaryFunction &Function, raw_ostream &OS);
+  bool runOnFunction(BinaryFunction &Function, nlohmann::json &json);
 };
 
 } // namespace bolt
