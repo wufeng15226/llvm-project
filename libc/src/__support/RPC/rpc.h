@@ -30,16 +30,6 @@
 namespace __llvm_libc {
 namespace rpc {
 
-/// A list of opcodes that we use to invoke certain actions on the server.
-enum Opcode : uint16_t {
-  NOOP = 0,
-  PRINT_TO_STDERR = 1,
-  EXIT = 2,
-  TEST_INCREMENT = 3,
-  TEST_INTERFACE = 4,
-  TEST_STREAM = 5,
-};
-
 /// A fixed size channel used to communicate between the RPC client and server.
 struct Buffer {
   uint64_t data[8];
@@ -121,6 +111,10 @@ public:
     this->packet =
         reinterpret_cast<Packet *>(advance(buffer, buffer_offset(port_count)));
   }
+
+  /// Returns the beginning of the unified buffer. Intended for initializing the
+  /// client after the server has been started.
+  LIBC_INLINE void *get_buffer_start() const { return Invert ? outbox : inbox; }
 
   /// Allocate a memory buffer sufficient to store the following equivalent
   /// representation in memory.

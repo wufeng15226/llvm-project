@@ -54,6 +54,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsAArch64.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsRISCV.h"
 #include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/LLVMContext.h"
@@ -4759,28 +4760,35 @@ void computeKnownFPClass(const Value *V, const APInt &DemandedElts,
     if ((InterestedClasses & fcNan) != fcNan)
       break;
 
+    // fcSubnormal is only needed in case of DAZ.
+    const FPClassTest NeedForNan = fcNan | fcInf | fcZero | fcSubnormal;
+
     KnownFPClass KnownLHS, KnownRHS;
-    computeKnownFPClass(Op->getOperand(1), DemandedElts,
-                        fcNan | fcInf | fcZero | fcSubnormal, KnownRHS,
+    computeKnownFPClass(Op->getOperand(1), DemandedElts, NeedForNan, KnownRHS,
                         Depth + 1, Q);
-    if (KnownRHS.isKnownNeverNaN() &&
-        (KnownRHS.isKnownNeverInfinity() || KnownRHS.isKnownNeverZero())) {
-      computeKnownFPClass(Op->getOperand(0), DemandedElts,
-                          fcNan | fcInf | fcZero, KnownLHS, Depth + 1, Q);
-      if (!KnownLHS.isKnownNeverNaN())
-        break;
+    if (!KnownRHS.isKnownNeverNaN())
+      break;
 
-      const Function *F = cast<Instruction>(Op)->getFunction();
+    computeKnownFPClass(Op->getOperand(0), DemandedElts, NeedForNan, KnownLHS,
+                        Depth + 1, Q);
+    if (!KnownLHS.isKnownNeverNaN())
+      break;
 
-      // If neither side can be zero (or nan) fmul never produces NaN.
-      // TODO: Check operand combinations.
-      // e.g. fmul nofpclass(inf nan zero), nofpclass(nan) -> nofpclass(nan)
-      if ((KnownLHS.isKnownNeverInfinity() ||
-           (F && KnownLHS.isKnownNeverLogicalZero(*F, Op->getType()))) &&
-          (KnownRHS.isKnownNeverInfinity() ||
-           (F && KnownRHS.isKnownNeverLogicalZero(*F, Op->getType()))))
-        Known.knownNot(fcNan);
+    // If 0 * +/-inf produces NaN.
+    if (KnownLHS.isKnownNeverInfinity() && KnownRHS.isKnownNeverInfinity()) {
+      Known.knownNot(fcNan);
+      break;
     }
+
+    const Function *F = cast<Instruction>(Op)->getFunction();
+    if (!F)
+      break;
+
+    if ((KnownRHS.isKnownNeverInfinity() ||
+         KnownLHS.isKnownNeverLogicalZero(*F, Op->getType())) &&
+        (KnownLHS.isKnownNeverInfinity() ||
+         KnownRHS.isKnownNeverLogicalZero(*F, Op->getType())))
+      Known.knownNot(fcNan);
 
     break;
   }
@@ -5608,6 +5616,16 @@ bool llvm::isIntrinsicReturningPointerAliasingArgumentWithoutCapturing(
   case Intrinsic::strip_invariant_group:
   case Intrinsic::aarch64_irg:
   case Intrinsic::aarch64_tagp:
+  // The amdgcn_make_buffer_rsrc function does not alter the address of the
+  // input pointer (and thus preserve null-ness for the purposes of escape
+  // analysis, which is where the MustPreserveNullness flag comes in to play).
+  // However, it will not necessarily map ptr addrspace(N) null to ptr
+  // addrspace(8) null, aka the "null descriptor", which has "all loads return
+  // 0, all stores are dropped" semantics. Given the context of this intrinsic
+  // list, no one should be relying on such a strict interpretation of
+  // MustPreserveNullness (and, at time of writing, they are not), but we
+  // document this fact out of an abundance of caution.
+  case Intrinsic::amdgcn_make_buffer_rsrc:
     return true;
   case Intrinsic::ptrmask:
     return !MustPreserveNullness;
@@ -7900,6 +7918,10 @@ static bool isTruePredicate(CmpInst::Predicate Pred, const Value *LHS,
 
     // LHS u<= LHS +_{nuw} C   for any C
     if (match(RHS, m_NUWAdd(m_Specific(LHS), m_APInt(C))))
+      return true;
+
+    // RHS >> V u<= RHS for any V
+    if (match(LHS, m_LShr(m_Specific(RHS), m_Value())))
       return true;
 
     // Match A to (X +_{nuw} CA) and B to (X +_{nuw} CB)
