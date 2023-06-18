@@ -23,6 +23,7 @@
 #include "bolt/Passes/JTFootprintReduction.h"
 #include "bolt/Passes/LongJmp.h"
 #include "bolt/Passes/LoopInversionPass.h"
+#include "bolt/Passes/LoopUnroll.h"
 #include "bolt/Passes/PLTCall.h"
 #include "bolt/Passes/PatchEntries.h"
 #include "bolt/Passes/RegReAssign.h"
@@ -407,6 +408,8 @@ void BinaryFunctionPassManager::runAllPasses(BinaryContext &BC) {
   Manager.registerPass(std::make_unique<SplitFunctions>(PrintSplit));
 
   Manager.registerPass(std::make_unique<LoopInversionPass>());
+
+  Manager.registerPass(std::make_unique<LoopUnrollPass>());
 
   Manager.registerPass(std::make_unique<TailDuplication>());
 

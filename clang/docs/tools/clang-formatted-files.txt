@@ -32,6 +32,7 @@ bolt/include/bolt/Passes/JTFootprintReduction.h
 bolt/include/bolt/Passes/LivenessAnalysis.h
 bolt/include/bolt/Passes/LongJmp.h
 bolt/include/bolt/Passes/LoopInversionPass.h
+bolt/include/bolt/Passes/LoopUnroll.h
 bolt/include/bolt/Passes/MCF.h
 bolt/include/bolt/Passes/PatchEntries.h
 bolt/include/bolt/Passes/PLTCall.h

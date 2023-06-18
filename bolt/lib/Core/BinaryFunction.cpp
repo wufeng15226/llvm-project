@@ -4453,6 +4453,29 @@ void BinaryFunction::printLoopInfo(raw_ostream &OS) const {
   OS << "Maximum nested loop depth: " << BLI->MaximumDepth << "\n\n";
 }
 
+void BinaryFunction::loopUnroll() {
+  if (!opts::shouldPrint(*this))
+    return;
+  if (isLoopFree()) 
+    return;
+  
+  std::stack<BinaryLoop *> St;
+  for (BinaryLoop *L : *BLI)
+    St.push(L);
+  while (!St.empty()) {
+    BinaryLoop *L = St.top();
+    St.pop();
+
+    for (BinaryLoop *Inner : *L)
+      St.push(Inner);
+
+    if (!hasValidProfile())
+      continue;
+    outs() << L->TotalBackEdgeCount << "\n";
+    // TODO: Unroll the loop
+  }
+}
+
 bool BinaryFunction::isAArch64Veneer() const {
   if (empty() || hasIslandsInfo())
     return false;

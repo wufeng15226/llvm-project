@@ -869,6 +869,9 @@ public:
   /// Print loop information about the function.
   void printLoopInfo(raw_ostream &OS) const;
 
+  /// loop unroll.
+  void loopUnroll();
+
   /// View CFG in graphviz program
   void viewGraph() const;
 

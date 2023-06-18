@@ -26,6 +26,7 @@ add_llvm_library(LLVMBOLTPasses
   LongJmp.cpp
   LoopInversionPass.cpp
   LivenessAnalysis.cpp
+  LoopUnroll.cpp
   MCF.cpp
   PatchEntries.cpp
   PettisAndHansen.cpp
