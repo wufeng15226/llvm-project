@@ -64,6 +64,15 @@ public:
     return Info->get(Inst.getOpcode()).isTerminator();
   }
 
+  virtual bool isCompare(const MCInst &Inst) const {
+    return Info->get(Inst.getOpcode()).isCompare();
+  }
+
+  virtual bool isAdd(const MCInst &Inst) const {
+     // 426 is the opcode for addq
+    return Info->get(Inst.getOpcode()).isAdd() || Inst.getOpcode() == 426;
+  }
+
   /// Returns true if at least one of the register writes performed by
   /// \param Inst implicitly clears the upper portion of all super-registers.
   ///

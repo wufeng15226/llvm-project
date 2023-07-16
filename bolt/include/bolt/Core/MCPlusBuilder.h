@@ -535,6 +535,14 @@ public:
     return Analysis->isTerminator(Inst);
   }
 
+  virtual bool isCompare(const MCInst &Inst) const {
+    return Analysis->isCompare(Inst);
+  }
+
+  virtual bool isAdd(const MCInst &Inst) const {
+    return Analysis->isAdd(Inst);
+  }
+
   virtual bool isNoop(const MCInst &Inst) const {
     llvm_unreachable("not implemented");
     return false;

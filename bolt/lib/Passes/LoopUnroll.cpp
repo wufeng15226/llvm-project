@@ -19,10 +19,6 @@ bool LoopUnrollPass::runOnFunction(BinaryFunction &BF) {
     return true;
 }
 
-bool LoopUnrollPass::runOnFunction(BinaryFunction &BF, raw_ostream &OS) {
-    return true;
-}
-
 void LoopUnrollPass::runOnFunctions(BinaryContext &BC) {
     if (!opts::LoopUnroll)
         return;

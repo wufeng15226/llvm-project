@@ -872,6 +872,21 @@ public:
   /// loop unroll.
   void loopUnroll();
 
+  /// get unroll count while loop unrolling.
+  uint64_t getUnrollCount(BinaryLoop* L) const;
+
+  /// get trip count while loop unrolling. 
+  uint64_t getConstantTripCount(BinaryLoop* L) const;
+
+  /// get iterator register, its bound and step while loop unrolling.
+  bool getIterator(BinaryLoop* L, unsigned& iteratorReg, unsigned& iteratorBegin, unsigned& iteratorEnd, unsigned& iteratorStep) const;
+
+  ///  change instruction group and iterator step while loop unrolling.
+  bool changLoop(BinaryLoop* L, unsigned& iteratorReg, unsigned& iteratorBegin, unsigned& iteratorEnd, unsigned& iteratorStep, unsigned unrollCount);
+
+  /// unroll innermost simple loop.
+  bool loopUnrollInnermostSimpleLoop(BinaryLoop* L);
+
   /// View CFG in graphviz program
   void viewGraph() const;
 

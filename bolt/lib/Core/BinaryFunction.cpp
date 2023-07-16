@@ -4458,10 +4458,20 @@ void BinaryFunction::loopUnroll() {
     return;
   if (isLoopFree()) 
     return;
+
+  // TODO: use PGO to decide which loop to unroll
+  // if (!hasValidProfile())
+  //   return;
+
+  outs() << "---------------------------- Loop Unroll Begin for Function \"" << *this << "\" ----------------------------\n";
+  // outs() << "---------------------------- Print Begin for Function \"" << *this << "\" ----------------------------\n";
+  // print(outs());
+  // outs() << "---------------------------- Print End for Function \"" << *this << "\" ----------------------------\n";
   
   std::stack<BinaryLoop *> St;
   for (BinaryLoop *L : *BLI)
     St.push(L);
+  int loopCount = 0;
   while (!St.empty()) {
     BinaryLoop *L = St.top();
     St.pop();
@@ -4469,11 +4479,274 @@ void BinaryFunction::loopUnroll() {
     for (BinaryLoop *Inner : *L)
       St.push(Inner);
 
-    if (!hasValidProfile())
-      continue;
-    outs() << L->TotalBackEdgeCount << "\n";
-    // TODO: Unroll the loop
+    outs() << "\n---Loop " << loopCount++ << ":\n";
+    for(auto& basicBlockPtr : L->getBlocks()){
+      outs() << "Basic Block: " << basicBlockPtr->getName() << "\n";
+      if (!basicBlockPtr->empty()) {
+        for (auto& Inst : *basicBlockPtr) {
+          BC.printInstruction(outs(), Inst);
+        }
+      }
+    }
+    outs() << "---Loop End\n\n";
+
+    if (L->isInnermost()) {
+      if (L->getBlocks().size() == 1) {
+        loopUnrollInnermostSimpleLoop(L);
+      } else {
+        // TODO: Unroll the loop with mutiple blocks
+      }
+    } else {
+      // TODO: Unroll the outer loop
+    }
   }
+
+  outs() << "---------------------------- Loop Unroll End for Function \"" << *this << "\"----------------------------\n";
+}
+
+uint64_t BinaryFunction::getConstantTripCount(BinaryLoop* L) const {
+  // TODO: getConstantTripCount
+  return -1;
+}
+
+uint64_t BinaryFunction::getUnrollCount(BinaryLoop* L) const {
+  outs() << "2222222222222222222222222222 Get Unroll Count 2222222222222222222222222222\n";
+  int tripCount = getConstantTripCount(L);
+  // TODO: getUnrollCount
+  outs() << "Unroll Count: " << 2 << "\n";
+  return 2;
+}
+
+bool BinaryFunction::getIterator(BinaryLoop* L, unsigned& iteratorReg, unsigned& iteratorBegin, unsigned& iteratorEnd, unsigned& iteratorStep) const {
+  outs() << "1111111111111111111111111111 Get Iterator Reg 1111111111111111111111111111\n";
+  auto loopHeader = L->getHeader();
+  auto n = loopHeader->size();
+  if (n < 2) {
+    outs() << "Loop Header has less than 2 instructions\n";
+    return false;
+  }
+  
+  // find cmp instruction
+  // may bug here, for example, test instruction
+  // assert second last instruction is compare instruction
+  auto cmpInst = loopHeader->getInstructionAtIndex(n-2);
+  outs() << "Compare Instruction: \n";
+  BC.printInstruction(outs(), cmpInst);
+  outs() << '\t' << cmpInst << '\n';
+  
+  // find add instruction
+  if(BC.MIB->isCompare(cmpInst)) {
+    auto it=loopHeader->rbegin()+2;
+    for (;it!=loopHeader->rend();++it){
+      auto& inst = *it;
+      // BC.printInstruction(outs(), inst);
+      // outs() << inst << '\n';
+      if (BC.MIB->isAdd(inst)) {
+        auto& addInst = inst;
+        outs() << "Iterator Add Instruction: \n";
+        BC.printInstruction(outs(), addInst);
+        outs() << '\t'  << addInst << '\n';
+        for (auto& addReg : addInst) {
+          for (auto& cmpReg : cmpInst) {
+            if (addReg.isReg() && cmpReg.isReg() && addReg.getReg() == cmpReg.getReg()) {
+              outs() << "Iterator Reg: " << addReg.getReg() << "\n";
+              iteratorReg = addReg.getReg();
+              outs() << "Iterator Step: " << addInst.getOperand(2).getImm() << "\n";
+              iteratorStep = addInst.getOperand(2).getImm();
+              if (cmpInst.getOperand(1).isImm()) {
+                outs() << "Iterator End: " << cmpInst.getOperand(1).getImm() << "\n";
+                iteratorEnd = cmpInst.getOperand(1).getImm();
+              } else {
+                // TODO: solve cmpInst.getOperand(1) is reg
+                outs() << "cmpInst.getOperand(1) is not Imm\n";
+                return false;
+              }
+
+              // find iterator begin in loop preheader
+              for (auto pre = loopHeader->pred_begin(); pre != loopHeader->pred_end(); ++pre) {
+                auto preHeader = *pre;
+                if (preHeader==loopHeader) continue;
+                // outs() << "Basic Block: " << preHeader->getName() << "\n";
+                for(auto& preInst : *preHeader) {
+                  // BC.printInstruction(outs(), preInst);
+                  // outs() << '\t' << preInst << '\n';
+
+                  // find xorl instruction, xorl op code is 17767
+                  // may bug here, for example, mov instruction
+                  // assert set begin instruction is xorl instruction
+                  if (preInst.getOpcode() == 17767 && preInst.getOperand(0).isReg() && preInst.getOperand(2).isReg()) {
+                    auto& xorReg = preInst.getOperand(0);
+                    auto& xorReg2 = preInst.getOperand(2);
+                    // rsi to esi
+                    auto iteratorLongReg = iteratorReg - 28;
+                    if (xorReg.getReg() == xorReg2.getReg() && xorReg.getReg() == iteratorLongReg) {
+                      outs() << "Iterator Begin: " << 0 << "\n";
+                      iteratorBegin = 0;
+                      return true;
+                    }
+                  }
+                }
+              }
+              outs() << "Iterator Begin Not Found\n";
+              return false;
+            }
+          }
+        }
+        outs() << "Same Reg Not Found\n";
+        return false;
+      }
+    }
+    outs() << "add instruction not found, maybe another add op code. " << "\n";
+  }else{
+    outs() << "maybe another cmp op code: " << cmpInst.getOpcode() << "\n";
+  }
+  
+  return false;
+}
+
+bool BinaryFunction::changLoop(BinaryLoop* L, unsigned& iteratorReg, unsigned& iteratorBegin, unsigned& iteratorEnd, unsigned& iteratorStep, unsigned unrollCount) {
+  outs() << "3333333333333333333333333333 Change Loop 3333333333333333333333333333\n";
+  auto loopHeader = L->getHeader();
+  auto n = loopHeader->size();
+
+  // check iterator add instruction index
+  unsigned addIndex = 0;
+  for (int i=n-3;i>=0;--i){
+    auto& inst = loopHeader->getInstructionAtIndex(i);
+    if (BC.MIB->isAdd(inst) && inst.getOperand(1).getReg()==iteratorReg) {
+      auto& addInst = inst;
+      addIndex = i;
+      outs() << "Check Iterator Add Instruction Index: " << i << "\n";
+      BC.printInstruction(outs(), addInst);
+      outs() << '\t'  << addInst << '\n';
+      break;
+    }
+  }
+  if (0==addIndex) return false;
+  auto iteratorLongReg = iteratorReg - 28;
+
+  // gather group of instructions
+  std::vector<MCInst> originGroup;
+  for (unsigned i=0;i<addIndex;++i){
+    auto& inst = loopHeader->getInstructionAtIndex(i);
+    originGroup.emplace_back(inst);
+  }
+  
+  // create new group of instructions
+  std::vector<MCInst> newGroup;
+  for (unsigned i=1;i<unrollCount;++i){
+    for (auto& inst : originGroup) {
+      auto insertInst = MCInst(inst);
+      for (auto& op : insertInst) {
+        if (op.isReg() && (op.getReg() == iteratorLongReg || op.getReg() == iteratorReg)) {
+          outs() << "related ins: " << "\n";
+          BC.printInstruction(outs(), insertInst);
+          outs() << '\t' << insertInst << '\n';
+          unsigned firstImmInd{0}, secondImmInd{0};
+          for (unsigned j=0;j<insertInst.getNumOperands();++j) {
+            if (insertInst.getOperand(j).isImm()) {
+              if (0==firstImmInd) {
+                firstImmInd = j;
+              } else {
+                secondImmInd = j;
+              }
+            }
+          }
+          if (0==firstImmInd || 0==secondImmInd) {
+            outs() << "related imm not found\n";
+            return false;
+          }
+          outs() << "related imm indexs: " << firstImmInd << " " << secondImmInd << "\n";
+          unsigned base = insertInst.getOperand(firstImmInd).getImm();
+          outs() << "related imm base: " << base << "\n";
+          outs() << "related imm from: " << insertInst.getOperand(secondImmInd).getImm();
+          insertInst.getOperand(secondImmInd).setImm(insertInst.getOperand(secondImmInd).getImm() - iteratorStep * i * base);
+          outs() << " to: " << insertInst.getOperand(secondImmInd).getImm() << "\n";
+          break;
+        }
+      }
+      newGroup.emplace_back(insertInst);
+    }
+  }
+
+  // print originGroup
+  outs() << "Original Group of Instructions: \n";
+  for (auto& inst : originGroup) {
+    BC.printInstruction(outs(), inst);
+    // outs() << '\t' << inst << '\n';
+  }
+
+  // print newGroup
+  outs() << "New Group of Instructions: \n";
+  for (auto& inst : newGroup) {
+    BC.printInstruction(outs(), inst);
+    // outs() << '\t' << inst << '\n';
+  }
+
+  // change step
+  iteratorStep *= unrollCount;
+  // loopHeader->getInstructionAtIndex(addIndex).getOperand(2).setImm(iteratorStep);
+  outs() << "Change Iterator Step: " << iteratorStep << "\n";
+  outs() << "New Iterator Add Instruction : \n";
+  BC.printInstruction(outs(), loopHeader->getInstructionAtIndex(addIndex));
+  outs() << '\t' << loopHeader->getInstructionAtIndex(addIndex) << '\n';
+
+
+  // insert newGroup
+  // for (unsigned i=0;i<newGroup.size();++i) {
+  //   loopHeader->insertInstruction(loopHeader->begin() + addIndex + i, newGroup[i]);
+  // }
+  // loopHeader->clear();
+
+  // after change
+  outs() << "After Change: \n";
+  for (auto& inst : *loopHeader) {
+    BC.printInstruction(outs(), inst);
+    // outs() << '\t' << inst << '\n';
+  }
+
+  // this->setSize(this->getImageSize());
+  // this->setMaxSize(this->getImageSize());
+  // outs() << "size " << this->getSize() << "\n";
+  // outs() << "max size " << this->getMaxSize() << "\n";
+
+  return true;
+}
+
+
+bool BinaryFunction::loopUnrollInnermostSimpleLoop(BinaryLoop* L) {
+  auto basicBlockPtr = L->getBlocks()[0];
+  if (!basicBlockPtr->empty()) {
+    outs() << "Unroll the innermost loop with one block\n";
+    
+    // first step: find iterator register, its bound and step
+    unsigned iteratorReg{0};
+    unsigned iteratoBegin{0};
+    unsigned iteratoEnd{0};
+    unsigned iteratorStep{0};
+    if (!getIterator(L, iteratorReg, iteratoBegin, iteratoEnd, iteratorStep)) {
+      outs() << "!!!!!!!!!!!!!!!!!!!!!!!!!!!! Cannot find iterator register !!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
+      return false;
+    }
+
+    // second step: get unroll count
+    unsigned unrollCount = getUnrollCount(L);
+    if (unrollCount==1) {
+      outs() << "!!!!!!!!!!!!!!!!!!!!!!!!!!!! Cannot get unroll factor !!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
+      return false;
+    }
+
+    // third step: copy instruction group and change iterator step
+    if (!changLoop(L, iteratorReg, iteratoBegin, iteratoEnd, iteratorStep, unrollCount)) {
+      outs() << "!!!!!!!!!!!!!!!!!!!!!!!!!!!! Cannot change loop !!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
+      return false;
+    }
+
+    outs() << "!!!!!!!!!!!!!!!!!!!!!!!!!!!! Loop Unroll Success !!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
+    
+    return true;
+  }
+  return false;
 }
 
 bool BinaryFunction::isAArch64Veneer() const {

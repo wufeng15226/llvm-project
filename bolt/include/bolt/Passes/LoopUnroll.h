@@ -15,7 +15,6 @@ public:
   /// Pass entry point
   void runOnFunctions(BinaryContext &BC) override;
   bool runOnFunction(BinaryFunction &Function);
-  bool runOnFunction(BinaryFunction &Function, raw_ostream &OS);
 };
 
 } // namespace bolt
