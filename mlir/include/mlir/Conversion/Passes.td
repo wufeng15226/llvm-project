@@ -426,6 +426,10 @@ def ConvertGpuOpsToNVVMOps : Pass<"convert-gpu-to-nvvm", "gpu::GPUModuleOp"> {
            "Bitwidth of the index type, 0 to use size of machine word">,
     Option<"hasRedux", "has-redux", "bool", /*default=*/"false",
            "Target gpu supports redux">,
+    Option<"useBarePtrCallConv", "use-bare-ptr-memref-call-conv", "bool",
+           /*default=*/"false",
+           "Replace memref arguments in GPU functions with bare pointers. "
+           "All memrefs must have static shape.">,
     Option<"useOpaquePointers", "use-opaque-pointers", "bool",
                    /*default=*/"true", "Generate LLVM IR using opaque pointers "
                    "instead of typed pointers">,
@@ -703,6 +707,21 @@ def ConvertMemRefToSPIRV : Pass<"convert-memref-to-spirv"> {
            "int", /*default=*/"8",
            "The number of bits to store a boolean value">
   ];
+}
+
+//===----------------------------------------------------------------------===//
+// NVVMToLLVM
+//===----------------------------------------------------------------------===//
+
+def ConvertNVVMToLLVMPass : Pass<"convert-nvvm-to-llvm"> {
+  let summary = "Convert NVVM dialect to LLVM dialect";
+  let description = [{
+    This pass generates inline assembly for the NVVM ops which is not 
+    implemented in LLVM core.
+  }];
+  let dependentDialects = [
+    "NVVM::NVVMDialect",
+  ];  
 }
 
 //===----------------------------------------------------------------------===//
@@ -1061,7 +1080,7 @@ def ConvertVectorToSCF : Pass<"convert-vector-to-scf"> {
 // VectorToLLVM
 //===----------------------------------------------------------------------===//
 
-def ConvertVectorToLLVMPass : Pass<"convert-vector-to-llvm", "ModuleOp"> {
+def ConvertVectorToLLVMPass : Pass<"convert-vector-to-llvm"> {
   let summary = "Lower the operations from the vector dialect into the LLVM "
                 "dialect";
   let description = [{

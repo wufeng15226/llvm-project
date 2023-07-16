@@ -103,6 +103,8 @@ static bool isSupportedRISCV(uint64_t Type) {
   case ELF::R_RISCV_PCREL_LO12_I:
   case ELF::R_RISCV_RVC_JUMP:
   case ELF::R_RISCV_RVC_BRANCH:
+  case ELF::R_RISCV_ADD32:
+  case ELF::R_RISCV_SUB32:
     return true;
   }
 }
@@ -196,6 +198,8 @@ static size_t getSizeForTypeRISCV(uint64_t Type) {
   case ELF::R_RISCV_32_PCREL:
   case ELF::R_RISCV_CALL:
   case ELF::R_RISCV_CALL_PLT:
+  case ELF::R_RISCV_ADD32:
+  case ELF::R_RISCV_SUB32:
     return 4;
   case ELF::R_RISCV_GOT_HI20:
     // See extractValueRISCV for why this is necessary.
@@ -509,6 +513,9 @@ static uint64_t extractValueRISCV(uint64_t Type, uint64_t Contents,
     return SignExtend64<11>(Contents >> 2);
   case ELF::R_RISCV_RVC_BRANCH:
     return SignExtend64<8>(((Contents >> 2) & 0x1f) | ((Contents >> 5) & 0xe0));
+  case ELF::R_RISCV_ADD32:
+  case ELF::R_RISCV_SUB32:
+    return Contents;
   }
 }
 
@@ -668,6 +675,9 @@ static bool isPCRelativeRISCV(uint64_t Type) {
   switch (Type) {
   default:
     llvm_unreachable("Unknown relocation type");
+  case ELF::R_RISCV_ADD32:
+  case ELF::R_RISCV_SUB32:
+    return false;
   case ELF::R_RISCV_JAL:
   case ELF::R_RISCV_CALL:
   case ELF::R_RISCV_CALL_PLT:
@@ -817,39 +827,57 @@ uint64_t Relocation::getRelative() {
 
 size_t Relocation::emit(MCStreamer *Streamer) const {
   const size_t Size = getSizeForType(Type);
+  const auto *Value = createExpr(Streamer);
+  Streamer->emitValue(Value, Size);
+  return Size;
+}
+
+const MCExpr *Relocation::createExpr(MCStreamer *Streamer) const {
   MCContext &Ctx = Streamer->getContext();
+  const MCExpr *Value = nullptr;
+
+  if (Symbol && Addend) {
+    Value = MCBinaryExpr::createAdd(MCSymbolRefExpr::create(Symbol, Ctx),
+                                    MCConstantExpr::create(Addend, Ctx), Ctx);
+  } else if (Symbol) {
+    Value = MCSymbolRefExpr::create(Symbol, Ctx);
+  } else {
+    Value = MCConstantExpr::create(Addend, Ctx);
+  }
+
   if (isPCRelative(Type)) {
     MCSymbol *TempLabel = Ctx.createNamedTempSymbol();
     Streamer->emitLabel(TempLabel);
-    const MCExpr *Value = nullptr;
-    if (Symbol) {
-      Value = MCSymbolRefExpr::create(Symbol, Ctx);
-      if (Addend) {
-        Value = MCBinaryExpr::createAdd(
-            Value, MCConstantExpr::create(Addend, Ctx), Ctx);
-      }
-    } else {
-      Value = MCConstantExpr::create(Addend, Ctx);
-    }
     Value = MCBinaryExpr::createSub(
         Value, MCSymbolRefExpr::create(TempLabel, Ctx), Ctx);
-    Streamer->emitValue(Value, Size);
-
-    return Size;
   }
 
-  if (Symbol && Addend) {
-    auto Value =
-        MCBinaryExpr::createAdd(MCSymbolRefExpr::create(Symbol, Ctx),
-                                MCConstantExpr::create(Addend, Ctx), Ctx);
-    Streamer->emitValue(Value, Size);
-  } else if (Symbol) {
-    Streamer->emitSymbolValue(Symbol, Size);
-  } else {
-    Streamer->emitIntValue(Addend, Size);
+  return Value;
+}
+
+const MCExpr *Relocation::createExpr(MCStreamer *Streamer,
+                                     const MCExpr *RetainedValue) const {
+  const auto *Value = createExpr(Streamer);
+
+  if (RetainedValue) {
+    Value = MCBinaryExpr::create(getComposeOpcodeFor(Type), RetainedValue,
+                                 Value, Streamer->getContext());
   }
 
-  return Size;
+  return Value;
+}
+
+MCBinaryExpr::Opcode Relocation::getComposeOpcodeFor(uint64_t Type) {
+  assert(Arch == Triple::riscv64 && "only implemented for RISC-V");
+
+  switch (Type) {
+  default:
+    llvm_unreachable("not implemented");
+  case ELF::R_RISCV_ADD32:
+    return MCBinaryExpr::Add;
+  case ELF::R_RISCV_SUB32:
+    return MCBinaryExpr::Sub;
+  }
 }
 
 #define ELF_RELOC(name, value) #name,

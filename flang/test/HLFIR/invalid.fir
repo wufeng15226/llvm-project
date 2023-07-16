@@ -369,6 +369,30 @@ func.func @bad_all6(%arg0: !hlfir.expr<?x!fir.logical<4>>) {
 }
 
 // -----
+func.func @bad_count1(%arg0: !hlfir.expr<?x?x!fir.logical<4>>, %arg1: i32) {
+  // expected-error@+1 {{'hlfir.count' op result must be an array}}
+  %0 = hlfir.count %arg0 dim %arg1 : (!hlfir.expr<?x?x!fir.logical<4>>, i32) -> !hlfir.expr<i32>
+}
+
+// -----
+func.func @bad_count2(%arg0: !hlfir.expr<?x?x!fir.logical<4>>, %arg1: i32){
+  // expected-error@+1 {{'hlfir.count' op result rank must be one less than MASK}}
+  %0 = hlfir.count %arg0 dim %arg1 : (!hlfir.expr<?x?x!fir.logical<4>>, i32) -> !hlfir.expr<?x?x!fir.logical<4>>
+}
+
+// -----
+func.func @bad_count3(%arg0: !hlfir.expr<?x!fir.logical<4>>, %arg1: i32) {
+  // expected-error@+1 {{'hlfir.count' op result must be of numerical scalar type}}
+  %0 = hlfir.count %arg0 dim %arg1 : (!hlfir.expr<?x!fir.logical<4>>, i32) -> !hlfir.expr<i32>
+}
+
+// -----
+func.func @bad_count4(%arg0: !hlfir.expr<?x!fir.logical<4>>, %arg1: i32) {
+  // expected-error@+1 {{'hlfir.count' op result must be of numerical scalar type}}
+  %0 = hlfir.count %arg0 dim %arg1 : (!hlfir.expr<?x!fir.logical<4>>, i32) -> !fir.logical<4>
+}
+
+// -----
 func.func @bad_product1(%arg0: !hlfir.expr<?xi32>, %arg1: i32, %arg2: !fir.box<!fir.logical<4>>) {
   // expected-error@+1 {{'hlfir.product' op result must have the same element type as ARRAY argument}}
   %0 = hlfir.product %arg0 dim %arg1 mask %arg2 : (!hlfir.expr<?xi32>, i32, !fir.box<!fir.logical<4>>) -> f32
@@ -914,5 +938,26 @@ func.func @bad_elsewhere_3(%mask: !fir.ref<!fir.array<10x!fir.logical<4>>>, %x: 
       hlfir.yield %x : !fir.ref<!fir.array<10xf32>>
     }
   }
+  return
+}
+
+// -----
+func.func @bad_get_length_1(%arg0: !hlfir.expr<i32>) {
+  // expected-error@+1 {{'hlfir.get_length' op operand #0 must be any character scalar or array expression type, but got '!hlfir.expr<i32>'}}
+  %1 = hlfir.get_length %arg0 : (!hlfir.expr<i32>) -> index
+  return
+}
+
+// -----
+func.func @bad_get_length_2(%arg0: !hlfir.expr<?xi32>) {
+  // expected-error@+1 {{'hlfir.get_length' op operand #0 must be any character scalar or array expression type, but got '!hlfir.expr<?xi32>'}}
+  %1 = hlfir.get_length %arg0 : (!hlfir.expr<?xi32>) -> index
+  return
+}
+
+// -----
+func.func @bad_get_length_3(%arg0: !hlfir.expr<!fir.boxchar<1>>) {
+  // expected-error@+1 {{'hlfir.get_length' op operand #0 must be any character scalar or array expression type, but got '!hlfir.expr<!fir.boxchar<1>>'}}
+  %1 = hlfir.get_length %arg0 : (!hlfir.expr<!fir.boxchar<1>>) -> index
   return
 }

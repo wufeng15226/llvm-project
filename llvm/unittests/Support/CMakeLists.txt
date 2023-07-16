@@ -41,7 +41,6 @@ add_llvm_unittest(SupportTests
   ExtensibleRTTITest.cpp
   FileCollectorTest.cpp
   FileOutputBufferTest.cpp
-  FileUtilitiesTest.cpp
   FormatVariadicTest.cpp
   FSUniqueIDTest.cpp
   GlobPatternTest.cpp
@@ -89,7 +88,6 @@ add_llvm_unittest(SupportTests
   TypeSizeTest.cpp
   TypeTraitsTest.cpp
   TrailingObjectsTest.cpp
-  TrigramIndexTest.cpp
   UnicodeTest.cpp
   VersionTupleTest.cpp
   VirtualFileSystemTest.cpp
