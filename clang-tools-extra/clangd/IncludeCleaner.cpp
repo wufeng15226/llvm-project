@@ -13,7 +13,6 @@
 #include "Preamble.h"
 #include "Protocol.h"
 #include "SourceCode.h"
-#include "URI.h"
 #include "clang-include-cleaner/Analysis.h"
 #include "clang-include-cleaner/IncludeSpeller.h"
 #include "clang-include-cleaner/Record.h"
@@ -22,11 +21,6 @@
 #include "support/Path.h"
 #include "support/Trace.h"
 #include "clang/AST/ASTContext.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
-#include "clang/AST/TemplateName.h"
-#include "clang/AST/Type.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/SourceLocation.h"
@@ -47,7 +41,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -66,20 +59,6 @@ static bool AnalyzeStdlib = false;
 void setIncludeCleanerAnalyzesStdlib(bool B) { AnalyzeStdlib = B; }
 
 namespace {
-
-// Returns the range starting at '#' and ending at EOL. Escaped newlines are not
-// handled.
-clangd::Range getDiagnosticRange(llvm::StringRef Code, unsigned HashOffset) {
-  clangd::Range Result;
-  Result.end = Result.start = offsetToPosition(Code, HashOffset);
-
-  // Span the warning until the EOL or EOF.
-  Result.end.character +=
-      lspLength(Code.drop_front(HashOffset).take_until([](char C) {
-        return C == '\n' || C == '\r';
-      }));
-  return Result;
-}
 
 bool isIgnored(llvm::StringRef HeaderPath, HeaderFilter IgnoreHeaders) {
   // Convert the path to Unix slashes and try to match against the filter.
@@ -132,18 +111,6 @@ bool mayConsiderUnused(const Inclusion &Inc, ParsedAST &AST,
   return true;
 }
 
-llvm::StringRef getResolvedPath(const include_cleaner::Header &SymProvider) {
-  switch (SymProvider.kind()) {
-  case include_cleaner::Header::Physical:
-    return SymProvider.physical()->tryGetRealPathName();
-  case include_cleaner::Header::Standard:
-    return SymProvider.standard().name().trim("<>\"");
-  case include_cleaner::Header::Verbatim:
-    return SymProvider.verbatim().trim("<>\"");
-  }
-  llvm_unreachable("Unknown header kind");
-}
-
 std::vector<Diag> generateMissingIncludeDiagnostics(
     ParsedAST &AST, llvm::ArrayRef<MissingIncludeDiagInfo> MissingIncludes,
     llvm::StringRef Code, HeaderFilter IgnoreHeaders) {
@@ -163,7 +130,7 @@ std::vector<Diag> generateMissingIncludeDiagnostics(
                                          FileStyle->IncludeStyle);
   for (const auto &SymbolWithMissingInclude : MissingIncludes) {
     llvm::StringRef ResolvedPath =
-        getResolvedPath(SymbolWithMissingInclude.Providers.front());
+        SymbolWithMissingInclude.Providers.front().resolvedPath();
     if (isIgnored(ResolvedPath, IgnoreHeaders)) {
       dlog("IncludeCleaner: not diagnosing missing include {0}, filtered by "
            "config",
@@ -243,7 +210,7 @@ std::vector<Diag> generateUnusedIncludeDiagnostics(
     D.InsideMainFile = true;
     D.Severity = DiagnosticsEngine::Warning;
     D.Tags.push_back(Unnecessary);
-    D.Range = getDiagnosticRange(Code, Inc->HashOffset);
+    D.Range = rangeTillEOL(Code, Inc->HashOffset);
     // FIXME(kirillbobyrev): Removing inclusion might break the code if the
     // used headers are only reachable transitively through this one. Suggest
     // including them directly instead.
@@ -360,21 +327,29 @@ getUnused(ParsedAST &AST,
 std::vector<include_cleaner::SymbolReference>
 collectMacroReferences(ParsedAST &AST) {
   const auto &SM = AST.getSourceManager();
-  //  FIXME: !!this is a hacky way to collect macro references.
-  std::vector<include_cleaner::SymbolReference> Macros;
   auto &PP = AST.getPreprocessor();
-  for (const syntax::Token &Tok :
-       AST.getTokens().spelledTokens(SM.getMainFileID())) {
-    auto Macro = locateMacroAt(Tok, PP);
-    if (!Macro)
-      continue;
-    if (auto DefLoc = Macro->Info->getDefinitionLoc(); DefLoc.isValid())
+  std::vector<include_cleaner::SymbolReference> Macros;
+  for (const auto &[_, Refs] : AST.getMacros().MacroRefs) {
+    for (const auto &Ref : Refs) {
+      auto Loc = SM.getComposedLoc(SM.getMainFileID(), Ref.StartOffset);
+      const auto *Tok = AST.getTokens().spelledTokenAt(Loc);
+      if (!Tok)
+        continue;
+      auto Macro = locateMacroAt(*Tok, PP);
+      if (!Macro)
+        continue;
+      auto DefLoc = Macro->NameLoc;
+      if (!DefLoc.isValid())
+        continue;
       Macros.push_back(
-          {Tok.location(),
-           include_cleaner::Macro{/*Name=*/PP.getIdentifierInfo(Tok.text(SM)),
+          {include_cleaner::Macro{/*Name=*/PP.getIdentifierInfo(Tok->text(SM)),
                                   DefLoc},
-           include_cleaner::RefType::Explicit});
+           Tok->location(),
+           Ref.InConditionalDirective ? include_cleaner::RefType::Ambiguous
+                                      : include_cleaner::RefType::Explicit});
+    }
   }
+
   return Macros;
 }
 
