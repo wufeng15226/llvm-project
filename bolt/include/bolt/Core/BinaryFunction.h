@@ -857,16 +857,22 @@ public:
   void loopUnroll();
 
   /// get unroll count while loop unrolling.
-  uint64_t getUnrollCount(BinaryLoop* L) const;
+  uint64_t getUnrollCount(BinaryLoop* L, int64_t& iteratorBegin, int64_t& iteratorEnd, int64_t& iteratorStep) const;
 
-  /// get trip count while loop unrolling. 
-  uint64_t getConstantTripCount(BinaryLoop* L) const;
+  // get compare and iterator instruction while loop unrolling.
+  int64_t getCmpIterInstructionInd(BinaryLoop* L, int64_t& iteratorReg, int64_t& iteratorStep, int64_t& iteratorEnd) const;
+
+  /// get compare instruction while loop unrolling.
+  int64_t getCmpInstructionInd(BinaryLoop* L) const;
+
+  /// get iterator instruction while loop unrolling.
+  int64_t getIterInstructionInd(BinaryLoop* L, int64_t& iteratorReg, int64_t& iteratorStep, int64_t& iteratorEnd, MCInst& cmpInst) const;
 
   /// get iterator register, its bound and step while loop unrolling.
-  bool getIterator(BinaryLoop* L, unsigned& iteratorReg, unsigned& iteratorBegin, unsigned& iteratorEnd, unsigned& iteratorStep) const;
+  bool getIterator(BinaryLoop* L, int64_t& iteratorReg, int64_t& iteratorBegin, int64_t& iteratorEnd, int64_t& iteratorStep) const;
 
   ///  change instruction group and iterator step while loop unrolling.
-  bool changLoop(BinaryLoop* L, unsigned& iteratorReg, unsigned& iteratorBegin, unsigned& iteratorEnd, unsigned& iteratorStep, unsigned unrollCount);
+  bool changLoop(BinaryLoop* L, int64_t& iteratorReg, int64_t& iteratorBegin, int64_t& iteratorEnd, int64_t& iteratorStep, int64_t unrollCount);
 
   /// unroll innermost simple loop.
   bool loopUnrollInnermostSimpleLoop(BinaryLoop* L);

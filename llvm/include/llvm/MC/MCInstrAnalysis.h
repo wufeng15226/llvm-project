@@ -69,8 +69,16 @@ public:
   }
 
   virtual bool isAdd(const MCInst &Inst) const {
-     // 426 is the opcode for addq
-    return Info->get(Inst.getOpcode()).isAdd() || Inst.getOpcode() == 426;
+     // 427 is the opcode for addq
+     // 418 is the opcode for addl
+     // 435 is the opcode for addb
+    return Info->get(Inst.getOpcode()).isAdd() || Inst.getOpcode() == 427 || Inst.getOpcode() == 418 || Inst.getOpcode() == 435;
+  }
+
+  virtual bool isDec(const MCInst &Inst) const {
+     // 968 is the opcode for decq
+     // 965 is the opcode for decl
+    return Inst.getOpcode() == 968 || Inst.getOpcode() == 965;
   }
 
   /// Returns true if at least one of the register writes performed by

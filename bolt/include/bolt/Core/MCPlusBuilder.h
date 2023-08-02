@@ -543,6 +543,10 @@ public:
     return Analysis->isAdd(Inst);
   }
 
+  virtual bool isDec(const MCInst &Inst) const {
+    return Analysis->isDec(Inst);
+  }
+
   virtual bool isNoop(const MCInst &Inst) const {
     llvm_unreachable("not implemented");
     return false;
