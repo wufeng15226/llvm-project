@@ -877,6 +877,9 @@ public:
   /// unroll innermost simple loop.
   bool loopUnrollInnermostSimpleLoop(BinaryLoop* L);
 
+  /// unroll outer loop.
+  bool loopUnrollOuterLoop(BinaryLoop* L);
+
   /// View CFG in graphviz program
   void viewGraph() const;
 
