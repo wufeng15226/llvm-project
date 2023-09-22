@@ -904,10 +904,6 @@ class ModuleSummaryIndexBitcodeReader : public BitcodeReaderBase {
   /// path to the bitcode file.
   StringRef ModulePath;
 
-  /// For per-module summary indexes, the unique numerical identifier given to
-  /// this module by the client.
-  unsigned ModuleId;
-
   /// Callback to ask whether a symbol is the prevailing copy when invoked
   /// during combined index building.
   std::function<bool(GlobalValue::GUID)> IsPrevailing;
@@ -919,7 +915,7 @@ class ModuleSummaryIndexBitcodeReader : public BitcodeReaderBase {
 public:
   ModuleSummaryIndexBitcodeReader(
       BitstreamCursor Stream, StringRef Strtab, ModuleSummaryIndex &TheIndex,
-      StringRef ModulePath, unsigned ModuleId,
+      StringRef ModulePath,
       std::function<bool(GlobalValue::GUID)> IsPrevailing = nullptr);
 
   Error parseModule();
@@ -1356,13 +1352,7 @@ Type *BitcodeReader::getPtrElementTypeByID(unsigned ID) {
   if (!Ty->isPointerTy())
     return nullptr;
 
-  Type *ElemTy = getTypeByID(getContainedTypeID(ID, 0));
-  if (!ElemTy)
-    return nullptr;
-
-  assert(cast<PointerType>(Ty)->isOpaqueOrPointeeTypeMatches(ElemTy) &&
-         "Incorrect element type");
-  return ElemTy;
+  return getTypeByID(getContainedTypeID(ID, 0));
 }
 
 unsigned BitcodeReader::getVirtualTypeID(Type *Ty,
@@ -3202,7 +3192,7 @@ Error BitcodeReader::parseConstants() {
                      Opc == Instruction::LShr ||
                      Opc == Instruction::AShr) {
             if (Record[3] & (1 << bitc::PEO_EXACT))
-              Flags |= SDivOperator::IsExact;
+              Flags |= PossiblyExactOperator::IsExact;
           }
         }
         V = BitcodeConstant::create(Alloc, CurTy, {(uint8_t)Opc, Flags},
@@ -3273,9 +3263,7 @@ Error BitcodeReader::parseConstants() {
         PointeeType = getPtrElementTypeByID(BaseTypeID);
         if (!PointeeType)
           return error("Missing element type for old-style constant GEP");
-      } else if (!OrigPtrTy->isOpaqueOrPointeeTypeMatches(PointeeType))
-        return error("Explicit gep operator type does not match pointee type "
-                     "of pointer operand");
+      }
 
       V = BitcodeConstant::create(Alloc, CurTy,
                                   {Instruction::GetElementPtr, InBounds,
@@ -4515,10 +4503,6 @@ Error BitcodeReader::parseBitcodeInto(Module *M, bool ShouldLazyLoadMetadata,
 Error BitcodeReader::typeCheckLoadStoreInst(Type *ValType, Type *PtrType) {
   if (!isa<PointerType>(PtrType))
     return error("Load/Store operand is not a pointer type");
-
-  if (!cast<PointerType>(PtrType)->isOpaqueOrPointeeTypeMatches(ValType))
-    return error("Explicit load/store type does not match pointee "
-                 "type of pointer operand");
   if (!PointerType::isLoadableOrStorableType(ValType))
     return error("Cannot load/store from pointer");
   return Error::success();
@@ -4945,10 +4929,6 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
         if (BasePtr->getType()->isVectorTy())
           TyID = getContainedTypeID(TyID);
         Ty = getTypeByID(TyID);
-      } else if (!cast<PointerType>(BasePtr->getType()->getScalarType())
-                      ->isOpaqueOrPointeeTypeMatches(Ty)) {
-        return error(
-            "Explicit gep type does not match pointee type of pointer operand");
       }
 
       SmallVector<Value*, 16> GEPIdx;
@@ -5539,9 +5519,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
         FTy = dyn_cast_or_null<FunctionType>(getTypeByID(FTyID));
         if (!FTy)
           return error("Callee is not of pointer to function type");
-      } else if (!CalleeTy->isOpaqueOrPointeeTypeMatches(FTy))
-        return error("Explicit invoke type does not match pointee type of "
-                     "callee operand");
+      }
       if (Record.size() < FTy->getNumParams() + OpNum)
         return error("Insufficient operands to call");
 
@@ -5635,9 +5613,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
         FTy = dyn_cast_or_null<FunctionType>(getTypeByID(FTyID));
         if (!FTy)
           return error("Callee is not of pointer to function type");
-      } else if (!OpTy->isOpaqueOrPointeeTypeMatches(FTy))
-        return error("Explicit call type does not match pointee type of "
-                     "callee operand");
+      }
       if (Record.size() < FTy->getNumParams() + OpNum)
         return error("Insufficient operands to call");
 
@@ -6345,9 +6321,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
         FTy = dyn_cast_or_null<FunctionType>(getTypeByID(FTyID));
         if (!FTy)
           return error("Callee is not of pointer to function type");
-      } else if (!OpTy->isOpaqueOrPointeeTypeMatches(FTy))
-        return error("Explicit call type does not match pointee type of "
-                     "callee operand");
+      }
       if (Record.size() < FTy->getNumParams() + OpNum)
         return error("Insufficient operands to call");
 
@@ -6392,7 +6366,7 @@ Error BitcodeReader::parseFunctionBody(Function *F) {
       cast<CallInst>(I)->setCallingConv(
           static_cast<CallingConv::ID>((0x7ff & CCInfo) >> bitc::CALL_CCONV));
       CallInst::TailCallKind TCK = CallInst::TCK_None;
-      if (CCInfo & 1 << bitc::CALL_TAIL)
+      if (CCInfo & (1 << bitc::CALL_TAIL))
         TCK = CallInst::TCK_Tail;
       if (CCInfo & (1 << bitc::CALL_MUSTTAIL))
         TCK = CallInst::TCK_MustTail;
@@ -6721,13 +6695,12 @@ std::vector<StructType *> BitcodeReader::getIdentifiedStructTypes() const {
 
 ModuleSummaryIndexBitcodeReader::ModuleSummaryIndexBitcodeReader(
     BitstreamCursor Cursor, StringRef Strtab, ModuleSummaryIndex &TheIndex,
-    StringRef ModulePath, unsigned ModuleId,
-    std::function<bool(GlobalValue::GUID)> IsPrevailing)
+    StringRef ModulePath, std::function<bool(GlobalValue::GUID)> IsPrevailing)
     : BitcodeReaderBase(std::move(Cursor), Strtab), TheIndex(TheIndex),
-      ModulePath(ModulePath), ModuleId(ModuleId), IsPrevailing(IsPrevailing) {}
+      ModulePath(ModulePath), IsPrevailing(IsPrevailing) {}
 
 void ModuleSummaryIndexBitcodeReader::addThisModule() {
-  TheIndex.addModule(ModulePath, ModuleId);
+  TheIndex.addModule(ModulePath);
 }
 
 ModuleSummaryIndex::ModuleInfo *
@@ -6958,7 +6931,7 @@ Error ModuleSummaryIndexBitcodeReader::parseModule() {
         case bitc::MODULE_CODE_HASH: {
           if (Record.size() != 5)
             return error("Invalid hash length " + Twine(Record.size()).str());
-          auto &Hash = getThisModule()->second.second;
+          auto &Hash = getThisModule()->second;
           int Pos = 0;
           for (auto &Val : Record) {
             assert(!(Val >> 32) && "Unexpected high bits set");
@@ -7719,7 +7692,7 @@ Error ModuleSummaryIndexBitcodeReader::parseModuleStringTable() {
       if (convertToString(Record, 1, ModulePath))
         return error("Invalid record");
 
-      LastSeenModule = TheIndex.addModule(ModulePath, ModuleId);
+      LastSeenModule = TheIndex.addModule(ModulePath);
       ModuleIdMap[ModuleId] = LastSeenModule->first();
 
       ModulePath.clear();
@@ -7734,7 +7707,7 @@ Error ModuleSummaryIndexBitcodeReader::parseModuleStringTable() {
       int Pos = 0;
       for (auto &Val : Record) {
         assert(!(Val >> 32) && "Unexpected high bits set");
-        LastSeenModule->second.second[Pos++] = Val;
+        LastSeenModule->second[Pos++] = Val;
       }
       // Reset LastSeenModule to avoid overriding the hash unexpectedly.
       LastSeenModule = nullptr;
@@ -7992,14 +7965,14 @@ BitcodeModule::getLazyModule(LLVMContext &Context, bool ShouldLazyLoadMetadata,
 // module path used in the combined summary (e.g. when reading summaries for
 // regular LTO modules).
 Error BitcodeModule::readSummary(
-    ModuleSummaryIndex &CombinedIndex, StringRef ModulePath, uint64_t ModuleId,
+    ModuleSummaryIndex &CombinedIndex, StringRef ModulePath,
     std::function<bool(GlobalValue::GUID)> IsPrevailing) {
   BitstreamCursor Stream(Buffer);
   if (Error JumpFailed = Stream.JumpToBit(ModuleBit))
     return JumpFailed;
 
   ModuleSummaryIndexBitcodeReader R(std::move(Stream), Strtab, CombinedIndex,
-                                    ModulePath, ModuleId, IsPrevailing);
+                                    ModulePath, IsPrevailing);
   return R.parseModule();
 }
 
@@ -8205,13 +8178,12 @@ Expected<std::string> llvm::getBitcodeProducerString(MemoryBufferRef Buffer) {
 }
 
 Error llvm::readModuleSummaryIndex(MemoryBufferRef Buffer,
-                                   ModuleSummaryIndex &CombinedIndex,
-                                   uint64_t ModuleId) {
+                                   ModuleSummaryIndex &CombinedIndex) {
   Expected<BitcodeModule> BM = getSingleModule(Buffer);
   if (!BM)
     return BM.takeError();
 
-  return BM->readSummary(CombinedIndex, BM->getModuleIdentifier(), ModuleId);
+  return BM->readSummary(CombinedIndex, BM->getModuleIdentifier());
 }
 
 Expected<std::unique_ptr<ModuleSummaryIndex>>

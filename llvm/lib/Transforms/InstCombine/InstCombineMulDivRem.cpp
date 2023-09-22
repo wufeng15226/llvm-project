@@ -258,9 +258,14 @@ Instruction *InstCombinerImpl::visitMul(BinaryOperator &I) {
   if (Op0->hasOneUse() && match(Op1, m_NegatedPower2())) {
     // Interpret  X * (-1<<C)  as  (-X) * (1<<C)  and try to sink the negation.
     // The "* (1<<C)" thus becomes a potential shifting opportunity.
-    if (Value *NegOp0 = Negator::Negate(/*IsNegation*/ true, Op0, *this))
-      return BinaryOperator::CreateMul(
-          NegOp0, ConstantExpr::getNeg(cast<Constant>(Op1)), I.getName());
+    if (Value *NegOp0 =
+            Negator::Negate(/*IsNegation*/ true, HasNSW, Op0, *this)) {
+      auto *Op1C = cast<Constant>(Op1);
+      return replaceInstUsesWith(
+          I, Builder.CreateMul(NegOp0, ConstantExpr::getNeg(Op1C), "",
+                               /* HasNUW */ false,
+                               HasNSW && Op1C->isNotMinSignedValue()));
+    }
 
     // Try to convert multiply of extended operand to narrow negate and shift
     // for better analysis.
@@ -473,6 +478,9 @@ Instruction *InstCombinerImpl::visitMul(BinaryOperator &I) {
 
   if (Instruction *Ext = narrowMathIfNoOverflow(I))
     return Ext;
+
+  if (Instruction *Res = foldBinOpOfSelectAndCastOfSelectCondition(I))
+    return Res;
 
   // min(X, Y) * max(X, Y) => X * Y.
   if (match(&I, m_CombineOr(m_c_Mul(m_SMax(m_Value(X), m_Value(Y)),
@@ -799,7 +807,7 @@ Instruction *InstCombinerImpl::visitFMul(BinaryOperator &I) {
       I.hasNoSignedZeros() && match(Start, m_Zero()))
     return replaceInstUsesWith(I, Start);
 
-  // minimun(X, Y) * maximum(X, Y) => X * Y.
+  // minimum(X, Y) * maximum(X, Y) => X * Y.
   if (match(&I,
             m_c_FMul(m_Intrinsic<Intrinsic::maximum>(m_Value(X), m_Value(Y)),
                      m_c_Intrinsic<Intrinsic::minimum>(m_Deferred(X),

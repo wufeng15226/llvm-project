@@ -26,6 +26,7 @@
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/TargetParser/TargetParser.h"
+#include "llvm/TargetParser/Triple.h"
 #include <cstdlib> // ::getenv
 
 using namespace clang::driver;
@@ -52,9 +53,6 @@ llvm::Triple::ArchType darwin::getArchTypeForMachOArchName(StringRef Str) {
   // translation.
 
   return llvm::StringSwitch<llvm::Triple::ArchType>(Str)
-      .Cases("ppc", "ppc601", "ppc603", "ppc604", "ppc604e", llvm::Triple::ppc)
-      .Cases("ppc750", "ppc7400", "ppc7450", "ppc970", llvm::Triple::ppc)
-      .Case("ppc64", llvm::Triple::ppc64)
       .Cases("i386", "i486", "i486SX", "i586", "i686", llvm::Triple::x86)
       .Cases("pentium", "pentpro", "pentIIm3", "pentIIm5", "pentium4",
              llvm::Triple::x86)
@@ -85,9 +83,15 @@ void darwin::setTripleTypeForMachOArchName(llvm::Triple &T, StringRef Str,
   if (ArchKind == llvm::ARM::ArchKind::ARMV6M ||
       ArchKind == llvm::ARM::ArchKind::ARMV7M ||
       ArchKind == llvm::ARM::ArchKind::ARMV7EM) {
-    // Don't reject -mios-version-min= if we have an iOS triple.
-    if (T.isiOS())
-      if (Arg *A = Args.getLastArgNoClaim(options::OPT_mios_version_min_EQ))
+    // Don't reject these -version-min= if we have the appropriate triple.
+    if (T.getOS() == llvm::Triple::IOS)
+      for (Arg *A : Args.filtered(options::OPT_mios_version_min_EQ))
+        A->ignoreTargetSpecific();
+    if (T.getOS() == llvm::Triple::WatchOS)
+      for (Arg *A : Args.filtered(options::OPT_mwatchos_version_min_EQ))
+        A->ignoreTargetSpecific();
+    if (T.getOS() == llvm::Triple::TvOS)
+      for (Arg *A : Args.filtered(options::OPT_mtvos_version_min_EQ))
         A->ignoreTargetSpecific();
 
     T.setOS(llvm::Triple::UnknownOS);
@@ -608,10 +612,6 @@ void darwin::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       if (getMachOToolChain().getMachOArchName(Args) == "arm64") {
         CmdArgs.push_back("-mllvm");
         CmdArgs.push_back("-enable-machine-outliner");
-
-        // Outline from linkonceodr functions by default in LTO.
-        CmdArgs.push_back("-mllvm");
-        CmdArgs.push_back("-enable-linkonceodr-outlining");
       }
     } else {
       // Disable all outlining behaviour if we have mno-outline. We need to do
@@ -621,6 +621,12 @@ void darwin::Linker::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("-enable-machine-outliner=never");
     }
   }
+
+  // Outline from linkonceodr functions by default in LTO, whenever the outliner
+  // is enabled.  Note that the target may enable the machine outliner
+  // independently of -moutline.
+  CmdArgs.push_back("-mllvm");
+  CmdArgs.push_back("-enable-linkonceodr-outlining");
 
   // Setup statistics file output.
   SmallString<128> StatsFile =
@@ -1477,9 +1483,13 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
 
   if (Sanitize.linkRuntimes()) {
     if (Sanitize.needsAsanRt()) {
-      assert(Sanitize.needsSharedRt() &&
-             "Static sanitizer runtimes not supported");
-      AddLinkSanitizerLibArgs(Args, CmdArgs, "asan");
+      if (Sanitize.needsStableAbi()) {
+        AddLinkSanitizerLibArgs(Args, CmdArgs, "asan_abi", /*shared=*/false);
+      } else {
+        assert(Sanitize.needsSharedRt() &&
+               "Static sanitizer runtimes not supported");
+        AddLinkSanitizerLibArgs(Args, CmdArgs, "asan");
+      }
     }
     if (Sanitize.needsLsanRt())
       AddLinkSanitizerLibArgs(Args, CmdArgs, "lsan");
@@ -2191,7 +2201,7 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
           std::string OSVersionArg =
               OSVersionArgTarget->getAsString(Args, Opts);
           std::string TargetArg = OSTarget->getAsString(Args, Opts);
-          getDriver().Diag(clang::diag::warn_drv_overriding_flag_option)
+          getDriver().Diag(clang::diag::warn_drv_overriding_option)
               << OSVersionArg << TargetArg;
         }
       }

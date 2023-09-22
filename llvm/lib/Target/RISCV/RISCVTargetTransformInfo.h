@@ -48,9 +48,6 @@ class RISCVTTIImpl : public BasicTTIImplBase<RISCVTTIImpl> {
   /// actual target hardware.
   unsigned getEstimatedVLFor(VectorType *Ty);
 
-  /// Return the cost of LMUL. The larger the LMUL, the higher the cost.
-  InstructionCost getLMULCost(MVT VT);
-
   /// Return the cost of accessing a constant pool entry of the specified
   /// type.
   InstructionCost getConstantPoolLoadCost(Type *Ty,
@@ -286,9 +283,9 @@ public:
     case RecurKind::UMax:
     case RecurKind::FMin:
     case RecurKind::FMax:
-    case RecurKind::SelectICmp:
-    case RecurKind::SelectFCmp:
     case RecurKind::FMulAdd:
+    case RecurKind::IAnyOf:
+    case RecurKind::FAnyOf:
       return true;
     default:
       return false;

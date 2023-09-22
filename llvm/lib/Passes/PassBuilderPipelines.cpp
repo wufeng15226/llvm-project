@@ -88,6 +88,7 @@
 #include "llvm/Transforms/Scalar/Float2Int.h"
 #include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/Transforms/Scalar/IndVarSimplify.h"
+#include "llvm/Transforms/Scalar/InferAlignment.h"
 #include "llvm/Transforms/Scalar/InstSimplifyPass.h"
 #include "llvm/Transforms/Scalar/JumpThreading.h"
 #include "llvm/Transforms/Scalar/LICM.h"
@@ -273,6 +274,8 @@ static cl::opt<AttributorRunOption> AttributorRun(
 cl::opt<bool> EnableMemProfContextDisambiguation(
     "enable-memprof-context-disambiguation", cl::init(false), cl::Hidden,
     cl::ZeroOrMore, cl::desc("Enable MemProf context disambiguation"));
+
+extern cl::opt<bool> EnableInferAlignmentPass;
 
 PipelineTuningOptions::PipelineTuningOptions() {
   LoopInterleaving = true;
@@ -724,7 +727,8 @@ void PassBuilder::addRequiredLTOPreLinkPasses(ModulePassManager &MPM) {
 
 void PassBuilder::addPGOInstrPasses(ModulePassManager &MPM,
                                     OptimizationLevel Level, bool RunProfileGen,
-                                    bool IsCS, std::string ProfileFile,
+                                    bool IsCS, bool AtomicCounterUpdate,
+                                    std::string ProfileFile,
                                     std::string ProfileRemappingFile,
                                     ThinOrFullLTOPhase LTOPhase,
                                     IntrusiveRefCntPtr<vfs::FileSystem> FS) {
@@ -793,13 +797,14 @@ void PassBuilder::addPGOInstrPasses(ModulePassManager &MPM,
   // Do counter promotion at Level greater than O0.
   Options.DoCounterPromotion = true;
   Options.UseBFIInPromotion = IsCS;
+  Options.Atomic = AtomicCounterUpdate;
   MPM.addPass(InstrProfiling(Options, IsCS));
 }
 
 void PassBuilder::addPGOInstrPassesForO0(
     ModulePassManager &MPM, bool RunProfileGen, bool IsCS,
-    std::string ProfileFile, std::string ProfileRemappingFile,
-    IntrusiveRefCntPtr<vfs::FileSystem> FS) {
+    bool AtomicCounterUpdate, std::string ProfileFile,
+    std::string ProfileRemappingFile, IntrusiveRefCntPtr<vfs::FileSystem> FS) {
   if (!RunProfileGen) {
     assert(!ProfileFile.empty() && "Profile use expecting a profile file!");
     MPM.addPass(
@@ -819,6 +824,7 @@ void PassBuilder::addPGOInstrPassesForO0(
   // Do not do counter promotion at O0.
   Options.DoCounterPromotion = false;
   Options.UseBFIInPromotion = IsCS;
+  Options.Atomic = AtomicCounterUpdate;
   MPM.addPass(InstrProfiling(Options, IsCS));
 }
 
@@ -853,11 +859,13 @@ PassBuilder::buildInlinerPipeline(OptimizationLevel Level,
 
   // Require the GlobalsAA analysis for the module so we can query it within
   // the CGSCC pipeline.
-  MIWP.addModulePass(RequireAnalysisPass<GlobalsAA, Module>());
-  // Invalidate AAManager so it can be recreated and pick up the newly available
-  // GlobalsAA.
-  MIWP.addModulePass(
-      createModuleToFunctionPassAdaptor(InvalidateAnalysisPass<AAManager>()));
+  if (EnableGlobalAnalyses) {
+    MIWP.addModulePass(RequireAnalysisPass<GlobalsAA, Module>());
+    // Invalidate AAManager so it can be recreated and pick up the newly
+    // available GlobalsAA.
+    MIWP.addModulePass(
+        createModuleToFunctionPassAdaptor(InvalidateAnalysisPass<AAManager>()));
+  }
 
   // Require the ProfileSummaryAnalysis for the module so we can query it within
   // the inliner pass.
@@ -1093,9 +1101,10 @@ PassBuilder::buildModuleSimplificationPipeline(OptimizationLevel Level,
       (PGOOpt->Action == PGOOptions::IRInstr ||
        PGOOpt->Action == PGOOptions::IRUse)) {
     addPGOInstrPasses(MPM, Level,
-                      /* RunProfileGen */ PGOOpt->Action == PGOOptions::IRInstr,
-                      /* IsCS */ false, PGOOpt->ProfileFile,
-                      PGOOpt->ProfileRemappingFile, Phase, PGOOpt->FS);
+                      /*RunProfileGen=*/PGOOpt->Action == PGOOptions::IRInstr,
+                      /*IsCS=*/false, PGOOpt->AtomicCounterUpdate,
+                      PGOOpt->ProfileFile, PGOOpt->ProfileRemappingFile, Phase,
+                      PGOOpt->FS);
     MPM.addPass(PGOIndirectCallPromotion(false, false));
   }
   if (PGOOpt && Phase != ThinOrFullLTOPhase::ThinLTOPostLink &&
@@ -1134,6 +1143,8 @@ void PassBuilder::addVectorPasses(OptimizationLevel Level,
   FPM.addPass(LoopVectorizePass(
       LoopVectorizeOptions(!PTO.LoopInterleaving, !PTO.LoopVectorization)));
 
+  if (EnableInferAlignmentPass)
+    FPM.addPass(InferAlignmentPass());
   if (IsFullLTO) {
     // The vectorizer may have significantly shortened a loop body; unroll
     // again. Unroll small loops to hide loop backedge latency and saturate any
@@ -1251,6 +1262,8 @@ void PassBuilder::addVectorPasses(OptimizationLevel Level,
     FPM.addPass(SROAPass(SROAOptions::PreserveCFG));
   }
 
+  if (EnableInferAlignmentPass)
+    FPM.addPass(InferAlignmentPass());
   FPM.addPass(InstCombinePass());
 
   // This is needed for two reasons:
@@ -1306,13 +1319,15 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   // instrumentation is after all the inlines are done.
   if (!LTOPreLink && PGOOpt) {
     if (PGOOpt->CSAction == PGOOptions::CSIRInstr)
-      addPGOInstrPasses(MPM, Level, /* RunProfileGen */ true,
-                        /* IsCS */ true, PGOOpt->CSProfileGenFile,
-                        PGOOpt->ProfileRemappingFile, LTOPhase, PGOOpt->FS);
+      addPGOInstrPasses(MPM, Level, /*RunProfileGen=*/true,
+                        /*IsCS=*/true, PGOOpt->AtomicCounterUpdate,
+                        PGOOpt->CSProfileGenFile, PGOOpt->ProfileRemappingFile,
+                        LTOPhase, PGOOpt->FS);
     else if (PGOOpt->CSAction == PGOOptions::CSIRUse)
-      addPGOInstrPasses(MPM, Level, /* RunProfileGen */ false,
-                        /* IsCS */ true, PGOOpt->ProfileFile,
-                        PGOOpt->ProfileRemappingFile, LTOPhase, PGOOpt->FS);
+      addPGOInstrPasses(MPM, Level, /*RunProfileGen=*/false,
+                        /*IsCS=*/true, PGOOpt->AtomicCounterUpdate,
+                        PGOOpt->ProfileFile, PGOOpt->ProfileRemappingFile,
+                        LTOPhase, PGOOpt->FS);
   }
 
   // Re-compute GlobalsAA here prior to function passes. This is particularly
@@ -1322,7 +1337,8 @@ PassBuilder::buildModuleOptimizationPipeline(OptimizationLevel Level,
   // information for all local globals here, the late loop passes and notably
   // the vectorizer will be able to use them to help recognize vectorizable
   // memory operations.
-  MPM.addPass(RecomputeGlobalsAAPass());
+  if (EnableGlobalAnalyses)
+    MPM.addPass(RecomputeGlobalsAAPass());
 
   invokeOptimizerEarlyEPCallbacks(MPM, Level);
 
@@ -1787,14 +1803,14 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   // sensitive PGO pass.
   if (PGOOpt) {
     if (PGOOpt->CSAction == PGOOptions::CSIRInstr)
-      addPGOInstrPasses(MPM, Level, /* RunProfileGen */ true,
-                        /* IsCS */ true, PGOOpt->CSProfileGenFile,
-                        PGOOpt->ProfileRemappingFile,
+      addPGOInstrPasses(MPM, Level, /*RunProfileGen=*/true,
+                        /*IsCS=*/true, PGOOpt->AtomicCounterUpdate,
+                        PGOOpt->CSProfileGenFile, PGOOpt->ProfileRemappingFile,
                         ThinOrFullLTOPhase::FullLTOPostLink, PGOOpt->FS);
     else if (PGOOpt->CSAction == PGOOptions::CSIRUse)
-      addPGOInstrPasses(MPM, Level, /* RunProfileGen */ false,
-                        /* IsCS */ true, PGOOpt->ProfileFile,
-                        PGOOpt->ProfileRemappingFile,
+      addPGOInstrPasses(MPM, Level, /*RunProfileGen=*/false,
+                        /*IsCS=*/true, PGOOpt->AtomicCounterUpdate,
+                        PGOOpt->ProfileFile, PGOOpt->ProfileRemappingFile,
                         ThinOrFullLTOPhase::FullLTOPostLink, PGOOpt->FS);
   }
 
@@ -1814,11 +1830,13 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
 
   // Require the GlobalsAA analysis for the module so we can query it within
   // MainFPM.
-  MPM.addPass(RequireAnalysisPass<GlobalsAA, Module>());
-  // Invalidate AAManager so it can be recreated and pick up the newly available
-  // GlobalsAA.
-  MPM.addPass(
-      createModuleToFunctionPassAdaptor(InvalidateAnalysisPass<AAManager>()));
+  if (EnableGlobalAnalyses) {
+    MPM.addPass(RequireAnalysisPass<GlobalsAA, Module>());
+    // Invalidate AAManager so it can be recreated and pick up the newly
+    // available GlobalsAA.
+    MPM.addPass(
+        createModuleToFunctionPassAdaptor(InvalidateAnalysisPass<AAManager>()));
+  }
 
   FunctionPassManager MainFPM;
   MainFPM.addPass(createFunctionToLoopPassAdaptor(
@@ -1939,9 +1957,9 @@ ModulePassManager PassBuilder::buildO0DefaultPipeline(OptimizationLevel Level,
                  PGOOpt->Action == PGOOptions::IRUse))
     addPGOInstrPassesForO0(
         MPM,
-        /* RunProfileGen */ (PGOOpt->Action == PGOOptions::IRInstr),
-        /* IsCS */ false, PGOOpt->ProfileFile, PGOOpt->ProfileRemappingFile,
-        PGOOpt->FS);
+        /*RunProfileGen=*/(PGOOpt->Action == PGOOptions::IRInstr),
+        /*IsCS=*/false, PGOOpt->AtomicCounterUpdate, PGOOpt->ProfileFile,
+        PGOOpt->ProfileRemappingFile, PGOOpt->FS);
 
   invokePipelineStartEPCallbacks(MPM, Level);
 

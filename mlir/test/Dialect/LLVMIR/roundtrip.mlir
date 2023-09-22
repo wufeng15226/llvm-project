@@ -334,6 +334,13 @@ func.func @null() {
   llvm.return
 }
 
+// CHECK-LABEL: @zero
+func.func @zero() {
+  // CHECK: llvm.mlir.zero : i8
+  %0 = llvm.mlir.zero : i8
+  llvm.return
+}
+
 // CHECK-LABEL: @atomic_load
 func.func @atomic_load(%ptr : !llvm.ptr) {
   // CHECK: llvm.load %{{.*}} atomic monotonic {alignment = 4 : i64} : !llvm.ptr -> f32
@@ -516,6 +523,10 @@ func.func @fastmathFlags(%arg0: f32, %arg1: f32, %arg2: i32, %arg3: vector<2 x f
   %13 = llvm.intr.vector.reduce.fmin(%arg3) {fastmathFlags = #llvm.fastmath<nnan>} : (vector<2xf32>) -> f32
 // CHECK: {{.*}} = llvm.intr.vector.reduce.fmax(%arg3) {fastmathFlags = #llvm.fastmath<nnan>} : (vector<2xf32>) -> f32
   %14 = llvm.intr.vector.reduce.fmax(%arg3) {fastmathFlags = #llvm.fastmath<nnan>} : (vector<2xf32>) -> f32
+// CHECK: {{.*}} = llvm.intr.vector.reduce.fminimum(%arg3) {fastmathFlags = #llvm.fastmath<nnan>} : (vector<2xf32>) -> f32
+  %15 = llvm.intr.vector.reduce.fminimum(%arg3) {fastmathFlags = #llvm.fastmath<nnan>} : (vector<2xf32>) -> f32
+// CHECK: {{.*}} = llvm.intr.vector.reduce.fmaximum(%arg3) {fastmathFlags = #llvm.fastmath<nnan>} : (vector<2xf32>) -> f32
+  %16 = llvm.intr.vector.reduce.fmaximum(%arg3) {fastmathFlags = #llvm.fastmath<nnan>} : (vector<2xf32>) -> f32
   return
 }
 
