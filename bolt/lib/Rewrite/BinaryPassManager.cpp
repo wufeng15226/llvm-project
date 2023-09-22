@@ -411,6 +411,9 @@ void BinaryFunctionPassManager::runAllPasses(BinaryContext &BC) {
 
   Manager.registerPass(std::make_unique<LoopUnrollPass>());
 
+  Manager.registerPass(std::make_unique<RegReAssign>(PrintRegReAssign),
+                       opts::RegReAssign);
+
   Manager.registerPass(std::make_unique<TailDuplication>());
 
   Manager.registerPass(std::make_unique<CMOVConversion>(),

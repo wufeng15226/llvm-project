@@ -4565,15 +4565,25 @@ int64_t BinaryFunction::getCmpInstructionInd(BinaryLoop* L) const {
   // may bug here, for example, test instruction
   // assert second last instruction is compare instruction
   auto cmpInst = loopLastBlockPtr->getInstructionAtIndex(n-2);
-  outs() << "Compare Instruction: \n";
-  BC.printInstruction(outs(), cmpInst);
-  outs() << '\t' << cmpInst << '\n';
   
   if(BC.MIB->isCompare(cmpInst)) {
+    outs() << "Compare Instruction: \n";
+    BC.printInstruction(outs(), cmpInst);
+    outs() << '\t' << cmpInst << '\n';
     return n-2;
   }else{
-    outs() << "maybe another cmp op code: " << cmpInst.getOpcode() << "\n";
-    return -1;
+    auto cmpInst2 = loopLastBlockPtr->getInstructionAtIndex(n-3);
+    if(BC.MIB->isCompare(cmpInst2))
+    {
+      outs() << "Compare Instruction: \n";
+      BC.printInstruction(outs(), cmpInst2);
+      outs() << '\t' << cmpInst2 << '\n';
+      return n-3;
+    }else{
+      outs() << "maybe another cmp op code: " << cmpInst.getOpcode() << "\n";
+      outs() << "maybe another cmp op code: " << cmpInst2.getOpcode() << "\n";
+      return -1;
+    }
   }
 }
 
@@ -5024,7 +5034,7 @@ bool BinaryFunction::changLoop(BinaryLoop* L, int64_t& iteratorReg, int64_t& ite
         for(auto it = L->getBlocks().begin(); it != L->getBlocks().end()-1; ++it) {
           auto block = *it;
           // auto newBlock = createBasicBlock(MCSymbol(block->getLabel()->getKind(), block->getLabel()->getName() + "_unroll_" + std::to_string(i) + std::to_string(it-L->getBlocks().begin()), false));
-          auto newBlock = createBasicBlock();
+          auto newBlock = createBasicBlock(); //BUG: we need diferent label for each block
           outs() << "Basic Block: " << block->getName() << "\n";
           outs() << "predecessors: ";
           for(auto& pred: block->predecessors())
