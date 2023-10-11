@@ -4550,7 +4550,7 @@ int64_t BinaryFunction::getCmpIterInstructionInd(BinaryLoop* L, int64_t& iterato
   // assert second last instruction is compare instruction
   auto cmpInst = loopLastBlockPtr->getInstructionAtIndex(n-2);
   
-  if(BC.MIB->isAdd(cmpInst)) {
+  if(BC.MIB->isAdd(cmpInst)&&cmpInst.getOperand(2).isImm()) {
     outs() << "Compare and Iter Instruction: \n";
     BC.printInstruction(outs(), cmpInst);
     outs() << '\t' << cmpInst << '\n';
@@ -4572,8 +4572,40 @@ int64_t BinaryFunction::getCmpIterInstructionInd(BinaryLoop* L, int64_t& iterato
     outs() << "Iterator Step: " << -1 << "\n";
     outs() << "Iterator End: " << 0 << "\n";
     return n-2;
+  }else if(BC.MIB->isBranch(cmpInst)){
+    auto cmpInst2 = loopLastBlockPtr->getInstructionAtIndex(n-3);
+    if(BC.MIB->isAdd(cmpInst2)&&cmpInst2.getOperand(2).isImm()) {
+      outs() << "Compare and Iter Instruction: \n";
+      BC.printInstruction(outs(), cmpInst2);
+      outs() << '\t' << cmpInst2 << '\n';
+      iteratorReg = cmpInst2.getOperand(0).getReg();
+      iteratorStep = cmpInst2.getOperand(2).getImm();
+      iteratorEnd = 0;
+      outs() << "Iterator Reg: " << iteratorReg << "\n";
+      outs() << "Iterator Step: " << iteratorStep << "\n";
+      outs() << "Iterator End: " << 0 << "\n";
+      return n-3;
+    }else if (BC.MIB->isDec(cmpInst2)){
+      outs() << "Compare and Iter Instruction: \n";
+      BC.printInstruction(outs(), cmpInst2);
+      outs() << '\t' << cmpInst2 << '\n';
+      iteratorReg = cmpInst2.getOperand(0).getReg();
+      iteratorStep = -1;
+      iteratorEnd = 0;
+      outs() << "Iterator Reg: " << iteratorReg << "\n";
+      outs() << "Iterator Step: " << -1 << "\n";
+      outs() << "Iterator End: " << 0 << "\n";
+      return n-3;
+    }else{
+      outs() << "can't get cmp and iter instruction at the same time. \n";
+      outs() << "maybe another iter cmp op code: " << cmpInst2.getOpcode() << "\n";
+      BC.printInstruction(outs(), cmpInst2);
+      return -1;
+    }
   }else{
     outs() << "can't get cmp and iter instruction at the same time. \n";
+    outs() << "maybe another iter cmp op code: " << cmpInst.getOpcode() << "\n";
+    BC.printInstruction(outs(), cmpInst);
     return -1;
   }
 }
@@ -4592,7 +4624,7 @@ int64_t BinaryFunction::getCmpInstructionInd(BinaryLoop* L) const {
     BC.printInstruction(outs(), cmpInst);
     outs() << '\t' << cmpInst << '\n';
     return n-2;
-  }else{
+  }else if(BC.MIB->isBranch(cmpInst)){
     auto cmpInst2 = loopLastBlockPtr->getInstructionAtIndex(n-3);
     if(BC.MIB->isCompare(cmpInst2))
     {
@@ -4601,10 +4633,14 @@ int64_t BinaryFunction::getCmpInstructionInd(BinaryLoop* L) const {
       outs() << '\t' << cmpInst2 << '\n';
       return n-3;
     }else{
-      outs() << "maybe another cmp op code: " << cmpInst.getOpcode() << "\n";
       outs() << "maybe another cmp op code: " << cmpInst2.getOpcode() << "\n";
+      BC.printInstruction(outs(), cmpInst2);
       return -1;
     }
+  }else{
+    outs() << "maybe another cmp op code: " << cmpInst.getOpcode() << "\n";
+    BC.printInstruction(outs(), cmpInst);
+    return -1;
   }
 }
 
@@ -4623,7 +4659,7 @@ int64_t BinaryFunction::getIterInstructionInd(BinaryLoop* L, int64_t& iteratorRe
       auto& addInst = inst;
       for (auto& addReg : addInst) {
         for (auto& cmpReg : cmpInst) {
-          if (addReg.isReg() && cmpReg.isReg() && addReg.getReg() == cmpReg.getReg()) {
+          if (addReg.isReg() && cmpReg.isReg() && addReg.getReg() == cmpReg.getReg()&&addInst.getOperand(2).isImm()) {
             outs() << "Iterator Add Instruction: \n";
             BC.printInstruction(outs(), addInst);
             outs() << '\t'  << addInst << '\n';
@@ -4644,8 +4680,7 @@ int64_t BinaryFunction::getIterInstructionInd(BinaryLoop* L, int64_t& iteratorRe
         }
       }
     // inc instruction
-    // 1211 is incq opcode, 1208 is incl opcode
-    }else if (inst.getOpcode() == 1211 || inst.getOpcode() == 1208) {
+    }else if (BC.MIB->isInc(inst)) {
       auto& incInst = inst;
       for (auto& addReg : incInst) {
         for (auto& cmpReg : cmpInst) {
@@ -4752,16 +4787,16 @@ bool BinaryFunction::getIterator(BinaryLoop* L, int64_t& iteratorReg, int64_t& i
         // rax to eax, rdx to edx
         // rsi to esi
         // r12 to r12d, r13 to r13d, r14 to r14d
-        std::unordered_map<int64_t, int64_t> regMap{{51, 22}, {56, 27},
+        std::unordered_map<int64_t, int64_t> regMap{{51, 22}, {54, 25}, {56, 27},
                                                     {60, 32}, {53, 24},
                                                     {132, 268}, {133, 269}, {134, 270}};
         for(auto it = preHeader->rbegin(); it != preHeader->rend(); ++it) {
           auto& preInst = *it; 
-          // BC.printInstruction(outs(), preInst);
-          // outs() << '\t' << preInst << '\n';
+          BC.printInstruction(outs(), preInst);
+          outs() << '\t' << preInst << '\n';
 
-          // find xorl instruction, xorl op code is 17768
-          if (preInst.getOpcode() == 17768 && preInst.getOperand(0).isReg() && preInst.getOperand(2).isReg()) {
+          // find xorl instruction, xorl op code is 17818
+          if (preInst.getOpcode() == 17818 && preInst.getOperand(0).isReg() && preInst.getOperand(2).isReg()) {
             auto& xorReg = preInst.getOperand(0);
             auto& xorReg2 = preInst.getOperand(2);
             if (xorReg.getReg() == xorReg2.getReg() && (xorReg.getReg() == regMap[iteratorReg])) {
@@ -4774,8 +4809,8 @@ bool BinaryFunction::getIterator(BinaryLoop* L, int64_t& iteratorReg, int64_t& i
             }
           }
 
-          // find movl instruction, movl op code is 1815
-          if (preInst.getOpcode() == 1815 && preInst.getOperand(0).isReg() && preInst.getOperand(1).isImm()) {
+          // find movl instruction, movl op code is 1823,  movq op code is 1843
+          if ((preInst.getOpcode() == 1823 || preInst.getOpcode() == 1843 ) && preInst.getOperand(0).isReg() && preInst.getOperand(1).isImm()) {
             // BC.printInstruction(outs(), preInst);
             // outs() << '\t'  << preInst << '\n';
               
@@ -4790,7 +4825,7 @@ bool BinaryFunction::getIterator(BinaryLoop* L, int64_t& iteratorReg, int64_t& i
             }
           }
         }
-        outs() << "xorl and movl instruction not found in loopHeader, maybe another add op code. " << "\n";
+        outs() << "xorl and movl instruction not found in loopHeader, maybe another init op code. " << "\n";
         outs() << "Iterator Begin Not Found\n";
         return false;
       }
@@ -4826,7 +4861,7 @@ bool BinaryFunction::getIterator(BinaryLoop* L, int64_t& iteratorReg, int64_t& i
         // rax to eax, rdx to edx
         // rsi to esi
         // r12 to r12d, r13 to r13d, r14 to r14d
-        std::unordered_map<int64_t, int64_t> regMap{{51, 22}, {56, 27},
+        std::unordered_map<int64_t, int64_t> regMap{{51, 22}, {54, 25}, {56, 27},
                                                     {60, 32}, {53, 24},
                                                     {132, 268}, {133, 269}, {134, 270}};
         for(auto it = preHeader->rbegin(); it != preHeader->rend(); ++it) {
@@ -4927,7 +4962,7 @@ bool BinaryFunction::changLoop(BinaryLoop* L, int64_t& iteratorReg, int64_t& ite
       // rax to eax, rdx to edx
       // rsi to esi
       // r12 to r12d, r13 to r13d, r14 to r14d
-      std::unordered_map<int64_t, int64_t> regMap{{51, 22}, {56, 27},
+      std::unordered_map<int64_t, int64_t> regMap{{51, 22}, {54, 25}, {56, 27},
                                                     {60, 32}, {53, 24},
                                                     {132, 268}, {133, 269}, {134, 270}};
       
@@ -4974,9 +5009,9 @@ bool BinaryFunction::changLoop(BinaryLoop* L, int64_t& iteratorReg, int64_t& ite
       // wrong real add ins: add    $0xffffff80,%rsi
       iteratorStep *= unrollCount;
       
-      // 427 is addq opcode
+      // 435 is addq opcode
       iterInst.clear();
-      iterInst.setOpcode(427);
+      iterInst.setOpcode(435);
       iterInst.addOperand(MCOperand::createReg(iteratorReg));
       iterInst.addOperand(MCOperand::createReg(iteratorReg));
       iterInst.addOperand(MCOperand::createImm(iteratorStep));
@@ -5102,9 +5137,9 @@ bool BinaryFunction::changLoop(BinaryLoop* L, int64_t& iteratorReg, int64_t& ite
             // rax to eax, rdx to edx
             // rsi to esi
             // r12 to r12d, r13 to r13d, r14 to r14d
-            std::unordered_map<int64_t, int64_t> regMap{{51, 22}, {56, 27},
-                                                          {60, 32}, {53, 24},
-                                                          {132, 268}, {133, 269}, {134, 270}};
+            std::unordered_map<int64_t, int64_t> regMap{{51, 22}, {54, 25}, {56, 27},
+                                                    {60, 32}, {53, 24},
+                                                    {132, 268}, {133, 269}, {134, 270}};
             for (auto& op : newInst) {
               // first change iterator related instruction
               if (op.isReg() && (op.getReg() == regMap[iteratorReg] || op.getReg() == iteratorReg)) {
@@ -5149,9 +5184,9 @@ bool BinaryFunction::changLoop(BinaryLoop* L, int64_t& iteratorReg, int64_t& ite
       insertBasicBlocks(*(L->getBlocks().end()-2), std::move(appendBlockGroup));
       
       iteratorStep *= unrollCount;
-      // 427 is addq opcode
+      // 435 is addq opcode
       iterInst.clear();
-      iterInst.setOpcode(427);
+      iterInst.setOpcode(435);
       iterInst.addOperand(MCOperand::createReg(iteratorReg));
       iterInst.addOperand(MCOperand::createReg(iteratorReg));
       iterInst.addOperand(MCOperand::createImm(iteratorStep));

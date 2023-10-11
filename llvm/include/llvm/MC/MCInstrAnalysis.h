@@ -70,18 +70,25 @@ public:
   }
 
   virtual bool isAdd(const MCInst &Inst) const {
-     // 427 is the opcode for addq
-     // 418 is the opcode for addl
-     // 435 is the opcode for addb
-    return Info->get(Inst.getOpcode()).isAdd() || Inst.getOpcode() == 427 || Inst.getOpcode() == 418 || Inst.getOpcode() == 435;
+     // 457 is the opcode for addsd
+     // 437, 435 is the opcode for addq
+     // 428, 426 is the opcode for addl
+     // 443 is the opcode for addb
+    return Info->get(Inst.getOpcode()).isAdd() || Inst.getOpcode() == 457 || Inst.getOpcode() == 437 || Inst.getOpcode() == 428 || Inst.getOpcode() == 426 || Inst.getOpcode() == 435 || Inst.getOpcode() == 443;
+  }
+
+  virtual bool isInc(const MCInst &Inst) const {
+     // 1219 is the opcode for incq
+     // 1216 is the opcode for incl
+    return Inst.getOpcode() == 1219 || Inst.getOpcode() == 1216 ;
   }
 
   virtual bool isDec(const MCInst &Inst) const {
-     // 968 is the opcode for decq
-     // 965 is the opcode for decl
-    return Inst.getOpcode() == 968 || Inst.getOpcode() == 965;
+     // 976 is the opcode for decq
+     // 973, 972 is the opcode for decl
+    return Inst.getOpcode() == 976 || Inst.getOpcode() == 973 || Inst.getOpcode() == 972;
   }
-  
+
   virtual bool mayAffectControlFlow(const MCInst &Inst,
                                     const MCRegisterInfo &MCRI) const {
     if (isBranch(Inst) || isCall(Inst) || isReturn(Inst) ||

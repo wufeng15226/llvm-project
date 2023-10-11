@@ -548,6 +548,10 @@ public:
     return Analysis->isAdd(Inst);
   }
 
+  virtual bool isInc(const MCInst &Inst) const {
+    return Analysis->isInc(Inst);
+  }
+
   virtual bool isDec(const MCInst &Inst) const {
     return Analysis->isDec(Inst);
   }
