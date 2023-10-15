@@ -4462,15 +4462,35 @@ void BinaryFunction::printLoopInfo(raw_ostream &OS) const {
   OS << "Maximum nested loop depth: " << BLI->MaximumDepth << "\n\n";
 }
 
-void BinaryFunction::loopUnroll() {
+void BinaryFunction::loopProfile(std::vector<int>& LoopProfileCount) {
   if (!opts::shouldPrint(*this))
     return;
   if (isLoopFree()) 
     return;
 
-  // TODO: use PGO to decide which loop to unroll
-  // if (!hasValidProfile())
-  //   return;
+  if (!hasValidProfile())
+    return;
+
+  std::stack<BinaryLoop *> St;
+  for (BinaryLoop *L : *BLI)
+    St.push(L);
+  int loopCount = 0;
+  while (!St.empty()) {
+    BinaryLoop *L = St.top();
+    St.pop();
+
+    for (BinaryLoop *Inner : *L)
+      St.push(Inner);
+    LoopProfileCount.push_back(L->TotalBackEdgeCount);
+  }
+}
+
+
+void BinaryFunction::loopUnroll() {
+  if (!opts::shouldPrint(*this))
+    return;
+  if (isLoopFree()) 
+    return;
 
   outs() << "---------------------------- Loop Unroll Begin for Function \"" << *this << "\" ----------------------------\n";
   // outs() << "---------------------------- Print Begin for Function \"" << *this << "\" ----------------------------\n";
@@ -4498,6 +4518,11 @@ void BinaryFunction::loopUnroll() {
       }
     }
     outs() << "---Loop End\n\n";
+
+    if (hasValidProfile()&&(L->TotalBackEdgeCount)<BC.HotLoopCountThreshold) {
+      outs() << "Loop Count: " << L->TotalBackEdgeCount << " too small for loop unroll.\n";
+      continue;
+    }
 
     if (L->isInnermost()) {
       if (L->getBlocks().size() == 1) {

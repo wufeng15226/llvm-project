@@ -851,6 +851,8 @@ public:
   /// Print loop information about the function.
   void printLoopInfo(raw_ostream &OS) const;
 
+  void loopProfile(std::vector<int>& LoopProfileCount);
+
   /// loop unroll.
   void loopUnroll();
 

@@ -642,6 +642,8 @@ public:
   /// Total hotness score according to profiling data for this binary.
   uint64_t TotalScore{0};
 
+  double_t HotLoopCountThreshold{-1};
+
   /// Binary-wide aggregated stats.
   struct BinaryStats {
     /// Stats for macro-fusion.

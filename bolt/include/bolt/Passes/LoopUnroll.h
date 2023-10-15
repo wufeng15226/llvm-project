@@ -11,10 +11,12 @@ public:
   explicit LoopUnrollPass() : BinaryFunctionPass(false) {}
 
   const char *getName() const override { return "loop-unroll"; }
+  std::vector<int> LoopProfileCount;
 
   /// Pass entry point
   void runOnFunctions(BinaryContext &BC) override;
   bool runOnFunction(BinaryFunction &Function);
+  bool LoopProfile(BinaryFunction &Function);
 };
 
 } // namespace bolt
