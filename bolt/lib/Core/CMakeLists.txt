@@ -18,6 +18,7 @@ add_llvm_library(LLVMBOLTCore
   BinaryEmitter.cpp
   BinaryFunction.cpp
   BinaryFunctionProfile.cpp
+  BinaryLoop.cpp
   BinarySection.cpp
   DebugData.cpp
   DIEBuilder.cpp

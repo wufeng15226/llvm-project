@@ -606,7 +606,17 @@ public:
     return 0;
   }
 
+  virtual bool isADDri(const MCInst &Inst) const {
+    llvm_unreachable("not implemented");
+    return false;
+  }
+
   virtual bool isSUB(const MCInst &Inst) const {
+    llvm_unreachable("not implemented");
+    return false;
+  }
+
+  virtual bool isSUBri(const MCInst &Inst) const {
     llvm_unreachable("not implemented");
     return false;
   }
@@ -958,6 +968,18 @@ public:
   evaluateX86MemoryOperand(const MCInst &Inst) const {
     llvm_unreachable("not implemented");
     return std::nullopt;
+  }
+
+  virtual bool evaluateX86MemoryOperand(const MCInst &Inst,
+                                        unsigned *BaseRegNum,
+                                        int64_t *ScaleImm,
+                                        unsigned *IndexRegNum,
+                                        int64_t *DispImm,
+                                        unsigned *SegmentRegNum,
+                                        const MCExpr **DispExpr = nullptr) const
+  {
+    llvm_unreachable("not implemented");
+    return false;
   }
 
   /// Given an instruction with memory addressing attempt to statically compute

@@ -24,6 +24,16 @@ class BinaryBasicBlock;
 
 class BinaryLoop : public LoopBase<BinaryBasicBlock, BinaryLoop> {
 public:
+  typedef struct MemoryOperand {
+    unsigned BaseRegNum = 0;
+    int64_t ScaleValue = 0;
+    unsigned IndexRegNum = 0;
+    int64_t DispValue = 0;
+    unsigned SegRegNum = 0;
+    const MCExpr *DispExpr = nullptr;
+    unsigned UnrollOpcode = 0;
+  } MemoryOperand;
+
   BinaryLoop() : LoopBase<BinaryBasicBlock, BinaryLoop>() {}
 
   // The total count of all the back edges of this loop.
@@ -37,10 +47,61 @@ public:
 
   // Most of the public interface is provided by LoopBase.
 
+  // bool GetLoopIterReg(unsigned &LoopIterReg);
+  bool GetLoopIterReg2(unsigned &LoopIterReg);
+  bool getLoopUnrollFactor(
+      const unsigned LoopIterReg, int64_t &LoopUnrollFactor,
+      int64_t &LoopUnrollStep, int64_t &LoopUnrollStart, MemoryOperand &MemOp,
+      std::vector<MemoryOperand> *ExcludeMemoryOperands = nullptr);
+
+  // Move loop update inst to the end and update related address.
+  bool dispatchLoopUpdateInst(const unsigned LoopIterReg,
+                              BinaryBasicBlock::iterator &UpdatePos);
+
+  // Take correlation analysis on unrolled loop and fold it.
+  bool correlationAnalysis(std::vector<MCInst> &Instructions,
+                           unsigned LoopIterReg, int64_t LoopUnrollFactor,
+                           int64_t LoopUnrollStep, int64_t LoopUnrollStart);
+
 protected:
   friend class LoopInfoBase<BinaryBasicBlock, BinaryLoop>;
   explicit BinaryLoop(BinaryBasicBlock *BB)
       : LoopBase<BinaryBasicBlock, BinaryLoop>(BB) {}
+  void printX86MemoryOperand(const MemoryOperand &MemOp);
+
+  bool compareMemExceptDisp(const MemoryOperand &MemOp1,
+                            const MemoryOperand &MemOp2) {
+
+    std::string s1, s2;
+    auto getSymbolName = [](const MemoryOperand &MemOp) {
+      std::string s;
+      if (MemOp.DispExpr != nullptr) {
+        if (MemOp.DispExpr->getKind() == MCExpr::Binary) {
+          const MCBinaryExpr *BE =
+              static_cast<const MCBinaryExpr *>(MemOp.DispExpr);
+          const MCExpr * Expr = BE->getLHS();
+          // const MCExpr * RHS = BE->getRHS();
+          if (Expr->getKind() != MCExpr::SymbolRef) {
+            const MCSymbolRefExpr *Ref =
+                static_cast<const MCSymbolRefExpr *>(Expr);
+            s = Ref->getSymbol().getName().str();
+          }
+        }
+      }
+      return s;
+    };
+
+    s1 = getSymbolName(MemOp1);
+    s2 = getSymbolName(MemOp1);
+    if ((!s1.empty() || !s2.empty()) && (s1 != s2))
+      return false;
+    if (MemOp1.BaseRegNum == MemOp2.BaseRegNum &&
+        MemOp1.ScaleValue == MemOp2.ScaleValue &&
+        MemOp1.IndexRegNum == MemOp2.IndexRegNum &&
+        MemOp1.SegRegNum == MemOp2.SegRegNum)
+      return true;
+    return false;
+  };
 };
 
 class BinaryLoopInfo : public LoopInfoBase<BinaryBasicBlock, BinaryLoop> {

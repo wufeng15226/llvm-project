@@ -319,6 +319,30 @@ public:
     return X86::isSUB(Inst.getOpcode());
   }
 
+  bool isADDri(const MCInst &Inst) const {
+    return Inst.getOpcode() == X86::ADD64ri32 ||
+           Inst.getOpcode() == X86::ADD64ri8 ||
+           Inst.getOpcode() == X86::ADD32ri ||
+           Inst.getOpcode() == X86::ADD32ri8 ||
+           Inst.getOpcode() == X86::ADD16ri ||
+           Inst.getOpcode() == X86::ADD16ri8 ||
+           Inst.getOpcode() == X86::ADD8ri ||
+           Inst.getOpcode() == X86::ADD8ri8 ||
+           Inst.getOpcode() == X86::ADD64i32;
+  }
+
+  bool isSUBri(const MCInst &Inst) const override {
+    return Inst.getOpcode() == X86::SUB64ri32 ||
+           Inst.getOpcode() == X86::SUB64ri8 ||
+           Inst.getOpcode() == X86::SUB32ri ||
+           Inst.getOpcode() == X86::SUB32ri8 ||
+           Inst.getOpcode() == X86::SUB16ri ||
+           Inst.getOpcode() == X86::SUB16ri8 ||
+           Inst.getOpcode() == X86::SUB8ri ||
+           Inst.getOpcode() == X86::SUB8ri8 ||
+           Inst.getOpcode() == X86::SUB64i32;
+  }
+
   bool isLEA64r(const MCInst &Inst) const override {
     return Inst.getOpcode() == X86::LEA64r;
   }
@@ -417,6 +441,56 @@ public:
   }
 
   StringRef getTrapFillValue() const override { return StringRef("\314", 1); }
+
+  bool evaluateX86MemoryOperand(const MCInst &Inst,
+                                unsigned *BaseRegNum,
+                                int64_t *ScaleImm,
+                                unsigned *IndexRegNum,
+                                int64_t *DispImm,
+                                unsigned *SegmentRegNum,
+                                const MCExpr **DispExpr = nullptr)
+                                                                const override {
+    assert(BaseRegNum && ScaleImm && IndexRegNum && SegmentRegNum &&
+           "one of the input pointers is null");
+    int MemOpNo = getMemoryOperandNo(Inst);
+    if (MemOpNo < 0)
+      return false;
+    unsigned MemOpOffset = static_cast<unsigned>(MemOpNo);
+
+    if (MemOpOffset + X86::AddrSegmentReg >= MCPlus::getNumPrimeOperands(Inst))
+      return false;
+
+    const MCOperand &Base = Inst.getOperand(MemOpOffset + X86::AddrBaseReg);
+    const MCOperand &Scale = Inst.getOperand(MemOpOffset + X86::AddrScaleAmt);
+    const MCOperand &Index = Inst.getOperand(MemOpOffset + X86::AddrIndexReg);
+    const MCOperand &Disp = Inst.getOperand(MemOpOffset + X86::AddrDisp);
+    const MCOperand &Segment =
+        Inst.getOperand(MemOpOffset + X86::AddrSegmentReg);
+
+    // Make sure it is a well-formed memory operand.
+    if (!Base.isReg() || !Scale.isImm() || !Index.isReg() ||
+        (!Disp.isImm() && !Disp.isExpr()) || !Segment.isReg())
+      return false;
+
+    *BaseRegNum = Base.getReg();
+    *ScaleImm = Scale.getImm();
+    *IndexRegNum = Index.getReg();
+    if (Disp.isImm()) {
+      assert(DispImm && "DispImm needs to be set");
+      *DispImm = Disp.getImm();
+      if (DispExpr) {
+        *DispExpr = nullptr;
+      }
+    } else {
+      assert(DispExpr && "DispExpr needs to be set");
+      *DispExpr = Disp.getExpr();
+      if (DispImm) {
+        *DispImm = 0;
+      }
+    }
+    *SegmentRegNum = Segment.getReg();
+    return true;
+  }
 
   struct IndJmpMatcherFrag1 : MCInstMatcher {
     std::unique_ptr<MCInstMatcher> Base;

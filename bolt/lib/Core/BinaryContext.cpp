@@ -1882,6 +1882,22 @@ void BinaryContext::printInstruction(raw_ostream &OS, const MCInst &Instruction,
   }
 }
 
+void BinaryContext::printRegisterName(raw_ostream &OS,
+                                      unsigned int RegNo) const {
+  InstPrinter->printRegName(OS, RegNo);
+  OS << "\n";
+}
+
+void BinaryContext::printRegistersName(raw_ostream &OS, BitVector Regs) const {
+  for (unsigned int i = 1; i < Regs.size(); i++) {
+    if (Regs[i] == 1) {
+      InstPrinter->printRegName(OS, i);
+      OS << " ";
+    }
+  }
+  OS << "\n";
+}
+
 std::optional<uint64_t>
 BinaryContext::getBaseAddressForMapping(uint64_t MMapAddress,
                                         uint64_t FileOffset) const {

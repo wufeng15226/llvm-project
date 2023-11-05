@@ -1291,6 +1291,10 @@ public:
                         bool PrintRelocations = false,
                         StringRef Endl = "\n") const;
 
+  void printRegisterName(raw_ostream &OS, const unsigned int RegNo) const;
+
+  void printRegistersName(raw_ostream &OS, BitVector Regs) const;
+
   /// Print a range of instructions.
   template <typename Itr>
   uint64_t

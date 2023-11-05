@@ -880,6 +880,9 @@ public:
   /// unroll outer loop.
   bool loopUnrollOuterLoop(BinaryLoop* L);
 
+  // Fold innermost loop with one BB.
+  bool foldInnerloopWithOneBB(BinaryLoop *L);
+
   /// View CFG in graphviz program
   void viewGraph() const;
 

@@ -129,6 +129,14 @@ cl::opt<bool>
                cl::desc("instrument code to generate accurate profile data"),
                cl::cat(BoltOptCategory));
 
+cl::opt<bool> RemoveSuffixTree("RemoveSuffixTree", cl::init(false),
+                                  cl::ZeroOrMore, cl::Hidden,
+                                  cl::cat(BoltCategory));
+
+cl::opt<bool> RemoveSubDDG("RemoveSubDDG", cl::init(false),
+                                  cl::ZeroOrMore, cl::Hidden,
+                                  cl::cat(BoltCategory));
+
 cl::opt<std::string>
 OutputFilename("o",
   cl::desc("<output file>"),

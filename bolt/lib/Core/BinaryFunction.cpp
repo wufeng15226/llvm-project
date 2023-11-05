@@ -4525,7 +4525,9 @@ void BinaryFunction::loopUnroll() {
         outs() << " loop unroll\n";
       }else{
         outs() << " loop reroll\n";
-        // reroll;
+        if (L->isInnermost()&&L->getBlocks().size() == 1) {
+          foldInnerloopWithOneBB(L);
+        }
         continue;
       }
       
@@ -5334,6 +5336,94 @@ bool BinaryFunction::loopUnrollOuterLoop(BinaryLoop* L) {
   
   return true;
 }
+
+// Fold innermost loop with one BB.
+bool BinaryFunction::foldInnerloopWithOneBB(BinaryLoop *L) {
+  // Collect the info about the unrolled loop.
+  // Instructions in the loop may be modified when collecting infos, so
+  // we have to make a copy in order to restore.
+  assert(L->getBlocks().size() == 1 && "Only one basic block in BB");
+  BinaryBasicBlock *BB = L->getBlocks()[0];
+  std::vector<MCInst> InstructionsBackup;
+  for (auto Inst : *BB)
+    InstructionsBackup.push_back(Inst);
+
+  auto revertBB = [&]() {
+    BB->clear();
+    BB->addInstructions(InstructionsBackup);
+  };
+
+  // Step 1: Find the LoopIterReg.
+  unsigned LoopIterReg = 0;
+  if (!L->GetLoopIterReg2(LoopIterReg)) {
+    tge_log("Failed: Can't get loop interator register. "
+            "This loop has not been unroll.",
+            RED);
+    revertBB();
+    return false;
+  }
+  outs() << "Loop Folding: LoopIterReg: ";
+  BC.printRegisterName(outs(), LoopIterReg);
+  outs() << "\n";
+
+  // Step 2: dispatch LoopUpdateInst.
+  // TODO(tge): Assume that LoopIterReg must be in OriginUpdateIter, but
+  // super or sub
+  BinaryBasicBlock::iterator OriginUpdateIter;
+  if (!L->dispatchLoopUpdateInst(LoopIterReg, OriginUpdateIter)) {
+    tge_log("Failed: Can't dispatch loop update Inst. This "
+            "loop has not been unroll.",
+            RED);
+    revertBB();
+    return false;
+  }
+  // tge_log("Step 2: After dispatch LoopUpdateInst: \n" << *L, GREEN);
+
+  // Step 3: Calculate the loop unroll factor.
+  int64_t LoopUnrollFactor = 0, LoopUnrollStep = 0, LoopUnrollStart = 0;
+  BinaryLoop::MemoryOperand MemOp;
+  if (!L->getLoopUnrollFactor(LoopIterReg, LoopUnrollFactor, LoopUnrollStep,
+                              LoopUnrollStart, MemOp, nullptr)) {
+    tge_log("Failed: Can't get loop unroll factor. This loop "
+                << "has not been unroll.",
+            RED);
+    revertBB();
+    return false;
+  }
+  tge_log("Loop Folding: This loop has been unroll with factor "
+              << LoopUnrollFactor << " step " << LoopUnrollStep << " start "
+              << LoopUnrollStart,
+          GREEN);
+  // Step 4: Correlation Analysis
+  // single loop body
+  std::vector<MCInst> Instructions;
+  if (!L->correlationAnalysis(Instructions, LoopIterReg, LoopUnrollFactor,
+                              LoopUnrollStep, LoopUnrollStart)) {
+    tge_log("Failed: Correlation analysis.", RED);
+    revertBB();
+    return false;
+  }
+  if (LoopUnrollFactor <= 1) {
+    revertBB();
+    return false;
+  }
+
+  if (Instructions.empty()) {
+    outs() << "Instructions is empty.\n";
+    revertBB();
+    return false;
+  }
+  if (Instructions.size() == BB->size()) {
+    revertBB();
+    return false;
+  }
+  BB->clear();
+  BB->addInstructions(Instructions);
+  // tge_log("Step 4: After Correlation analysis: \n" << *L, GREEN);
+  zty_log("end");
+  return true;
+}
+
 
 bool BinaryFunction::isAArch64Veneer() const {
   if (empty() || hasIslandsInfo())

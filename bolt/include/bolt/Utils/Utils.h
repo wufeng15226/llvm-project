@@ -16,10 +16,19 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
 class MCCFIInstruction;
 namespace bolt {
+
+#define tge_log(Message, color)                                                \
+    outs().changeColor(raw_ostream::Colors::color);                            \
+    outs() << "TGE: " << Message << "\n";                                      \
+    outs().resetColor();                                                       \
+
+#define zty_log(Message)                                                       \
+    outs() << "ZTY: " << Message << "\n";
 
 /// Free memory allocated for \p List.
 template <typename T> void clearList(T &List) {
