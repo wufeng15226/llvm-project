@@ -37,14 +37,9 @@ void LoopUnrollPass::runOnFunctions(BinaryContext &BC) {
             auto& binaryFunction = binaryFunctionPair.second;
             LoopProfile(binaryFunction);
         }
-        std::sort(LoopProfileCount.begin(), LoopProfileCount.end(), std::greater<int>());
-        for(int i = LoopProfileCount.size()-1; i >= 0; --i){
-            if(LoopProfileCount[i] == 0){
-                LoopProfileCount.erase(LoopProfileCount.begin()+i);
-            }
-            else{
-                break;
-            }
+        std::sort(LoopProfileCount.begin(), LoopProfileCount.end());
+        for(int i = 0; i < LoopProfileCount.size(); ++i){
+            ++LoopProfileCount[i];
         }
         for (auto& count: LoopProfileCount){
             outs() << count << " ";
@@ -68,19 +63,32 @@ void LoopUnrollPass::runOnFunctions(BinaryContext &BC) {
                 (sumXX - sumX * sumX / LoopProfileCount.size());
         double b = sumY / LoopProfileCount.size() - a * sumX / LoopProfileCount.size();
         outs() << "a:" << a << " b:" << b << "\n";
-        BC.HotLoopCountThreshold = exp(a * (LoopProfileCount.size() - 1) + b);
-        // BC.HotLoopCountThreshold = a * (LoopProfileCount.size() - 1) + b;
+        BC.HotLoopCountThreshold = exp(a * (LoopProfileCount.size() - 1) + b) + 1;
+        BC.MidLoopCountThreshold = exp(a * (LoopProfileCount.size()/2) + b) + 1;
+        BC.ColdLoopCountThreshold = exp(b) + 1;
         outs() << "log linear regression HotLoopCountThreshold:" << BC.HotLoopCountThreshold << "\n";
-        // outs() << "linear regression HotLoopCountThreshold:" << BC.HotLoopCountThreshold << "\n";
+        outs() << "log linear regression MidLoopCountThreshold:" << BC.MidLoopCountThreshold << "\n";
+        outs() << "log linear regression ColdLoopCountThreshold:" << BC.ColdLoopCountThreshold << "\n";
         int hotCount = 0;
+        int mildHotCount = 0;
+        int mildColdCount = 0;
+        int coldCount = 0;
         for (auto v : LoopProfileCount)
         {
             if(v>BC.HotLoopCountThreshold)
-                hotCount++;
-            // outs() << (v>BC.HotLoopCountThreshold) << " ";
+                ++hotCount;
+            else if(v>BC.MidLoopCountThreshold)
+                ++mildHotCount;
+            else if(v>BC.ColdLoopCountThreshold)
+                ++mildColdCount;
+            else
+                ++coldCount;
         }
         outs() << "\n";
         outs() << "find " << hotCount << " hot loop in " << LoopProfileCount.size() << " profile loop" << "\n";
+        outs() << "find " << mildHotCount << " mild hot loop in " << LoopProfileCount.size() << " profile loop" << "\n";
+        outs() << "find " << mildColdCount << " mild cold loop in " << LoopProfileCount.size() << " profile loop" << "\n";
+        outs() << "find " << coldCount << " cold loop in " << LoopProfileCount.size() << " profile loop" << "\n";
     }
     for(auto& binaryFunctionPair: BC.getBinaryFunctions()) {
         auto& binaryFunction = binaryFunctionPair.second;

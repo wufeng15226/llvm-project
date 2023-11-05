@@ -643,6 +643,8 @@ public:
   uint64_t TotalScore{0};
 
   double_t HotLoopCountThreshold{-1};
+  double_t MidLoopCountThreshold{-1};
+  double_t ColdLoopCountThreshold{-1};
 
   /// Binary-wide aggregated stats.
   struct BinaryStats {

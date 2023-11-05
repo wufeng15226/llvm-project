@@ -4519,9 +4519,16 @@ void BinaryFunction::loopUnroll() {
     }
     outs() << "---Loop End\n\n";
 
-    if (hasValidProfile()&&(L->TotalBackEdgeCount)<BC.HotLoopCountThreshold) {
-      outs() << "Loop Count: " << L->TotalBackEdgeCount << " too small for loop unroll.\n";
-      continue;
+    if (hasValidProfile()) {
+      outs() << "Loop Count: " << L->TotalBackEdgeCount;
+      if((L->TotalBackEdgeCount)>=BC.MidLoopCountThreshold){
+        outs() << " loop unroll\n";
+      }else{
+        outs() << " loop reroll\n";
+        // reroll;
+        continue;
+      }
+      
     }
 
     if (L->isInnermost()) {
@@ -4546,11 +4553,12 @@ uint64_t BinaryFunction::getUnrollCount(BinaryLoop* L, int64_t& iteratorBegin, i
   outs() << ", iteratorEnd: " << iteratorEnd;
   outs() << ", iteratorStep: " << iteratorStep << "\n";
   int64_t tripCount = (iteratorEnd-iteratorBegin)/iteratorStep;
-  // TODO: getUnrollCount in pgo way
   int64_t unrollCount = tripCount;
+  if(hasValidProfile()&&(L->TotalBackEdgeCount)<BC.HotLoopCountThreshold) unrollCount *= log(L->TotalBackEdgeCount+1)/log(BC.HotLoopCountThreshold);
 
   // FIXME: to avoid bug in changeLoopStep
   int64_t maxStep = 128;
+  if(hasValidProfile()&&(L->TotalBackEdgeCount)<BC.HotLoopCountThreshold) maxStep *= log(L->TotalBackEdgeCount+1)/log(BC.HotLoopCountThreshold);
   while(unrollCount != 0 && maxStep <= abs(iteratorStep) * unrollCount) {
     outs() << "Unroll Count: " << unrollCount << " too big for add instruction.\n";
     if (tripCount % unrollCount == 0) unrollCount--;
