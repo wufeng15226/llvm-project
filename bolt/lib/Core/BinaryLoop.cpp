@@ -1376,5 +1376,394 @@ void BinaryLoop::printX86MemoryOperand(const MemoryOperand &MemOp) {
   }
 }
 
+bool BinaryLoop::checkCmpInstruction(){
+  auto loopLastBlockPtr = *(getBlocks().rbegin());
+  auto n = loopLastBlockPtr->size();
+  auto& BC = loopLastBlockPtr->getFunction()->getBinaryContext();
+  
+  // check cmp instruction
+  // assert second last instruction is compare instruction
+  auto& cmpInst = loopLastBlockPtr->getInstructionAtIndex(n-2);
+  
+  if(BC.MIB->isCompare(cmpInst)) {
+    cmpInstructionInd = n-2;
+    outs() << "Compare Instruction: \n";
+    BC.printInstruction(outs(), cmpInst);
+    outs() << '\t' << cmpInst << '\n';
+    return true;
+  }else if(BC.MIB->isAdd(cmpInst)&&cmpInst.getOperand(2).isImm()) {
+    outs() << "Compare and Add Instruction: \n";
+    // BC.printInstruction(outs(), cmpInst);
+    // outs() << '\t' << cmpInst << '\n';
+    // iteratorReg = cmpInst.getOperand(0).getReg();
+    // iteratorStep = cmpInst.getOperand(2).getImm();
+    // iteratorEnd = 0;
+    // outs() << "Iterator Reg: " << iteratorReg << "\n";
+    // outs() << "Iterator Step: " << iteratorStep << "\n";
+    // outs() << "Iterator End: " << 0 << "\n";
+    // return n-2;
+  }else if (BC.MIB->isDec(cmpInst)){
+    outs() << "Compare and Dec Instruction: \n";
+    // BC.printInstruction(outs(), cmpInst);
+    // outs() << '\t' << cmpInst << '\n';
+    // iteratorReg = cmpInst.getOperand(0).getReg();
+    // iteratorStep = -1;
+    // iteratorEnd = 0;
+    // outs() << "Iterator Reg: " << iteratorReg << "\n";
+    // outs() << "Iterator Step: " << -1 << "\n";
+    // outs() << "Iterator End: " << 0 << "\n";
+    // return n-2;
+  }else if(BC.MIB->isBranch(cmpInst)){
+    outs() << "maybe outer loop\n";
+    // auto cmpInst2 = loopLastBlockPtr->getInstructionAtIndex(n-3);
+    // if(BC.MIB->isCompare(cmpInst2))
+    // {
+    //   cmpInstructionInd = n-3;
+    //   outs() << "Compare Instruction: \n";
+    //   BC.printInstruction(outs(), cmpInst2);
+    //   outs() << '\t' << cmpInst2 << '\n';
+    //   return n-3;
+    // }else if(BC.MIB->isAdd(cmpInst2)&&cmpInst2.getOperand(2).isImm()) {
+    //   outs() << "Compare and Iter Instruction: \n";
+    //   BC.printInstruction(outs(), cmpInst2);
+    //   outs() << '\t' << cmpInst2 << '\n';
+    //   iteratorReg = cmpInst2.getOperand(0).getReg();
+    //   iteratorStep = cmpInst2.getOperand(2).getImm();
+    //   iteratorEnd = 0;
+    //   outs() << "Iterator Reg: " << iteratorReg << "\n";
+    //   outs() << "Iterator Step: " << iteratorStep << "\n";
+    //   outs() << "Iterator End: " << 0 << "\n";
+    //   return n-3;
+    // }else if (BC.MIB->isDec(cmpInst2)){
+    //   outs() << "Compare and Iter Instruction: \n";
+    //   BC.printInstruction(outs(), cmpInst2);
+    //   outs() << '\t' << cmpInst2 << '\n';
+    //   iteratorReg = cmpInst2.getOperand(0).getReg();
+    //   iteratorStep = -1;
+    //   iteratorEnd = 0;
+    //   outs() << "Iterator Reg: " << iteratorReg << "\n";
+    //   outs() << "Iterator Step: " << -1 << "\n";
+    //   outs() << "Iterator End: " << 0 << "\n";
+    //   return n-3;
+    // }else{
+    //   outs() << "can't get cmp and iter instruction at the same time. \n";
+    //   outs() << "maybe another iter cmp op code: " << cmpInst2.getOpcode() << "\n";
+    //   BC.printInstruction(outs(), cmpInst2);
+    //   return -1;
+    // }
+  }else{
+    outs() << "maybe another cmp op code: " << cmpInst.getOpcode() << "\n";
+    BC.printInstruction(outs(), cmpInst);
+  }
+  return false;
+}
+
+bool BinaryLoop::checkInductionReg(){
+  if(!checkCmpInstruction()) return false;
+  auto loopLastBlockPtr = *(getBlocks().rbegin());
+  auto& BC = loopLastBlockPtr->getFunction()->getBinaryContext();
+  auto& cmpInst = loopLastBlockPtr->getInstructionAtIndex(cmpInstructionInd);
+
+  for (auto it=loopLastBlockPtr->begin()+cmpInstructionInd-1;it!=loopLastBlockPtr->begin();--it){
+    auto& inst = *it;
+    // BC.printInstruction(outs(), inst);
+    // outs() << inst << '\n';
+    // add instruction
+    if (BC.MIB->isAdd(inst)) {
+      auto& addInst = inst;
+      for (auto& addReg : addInst) {
+        // default rax cmp
+        if((cmpInst.getNumOperands()==1 || (cmpInst.getOperand(1).isInst())) && addReg.isReg() && addReg.getReg()==51 && addInst.getOperand(2).isImm()){
+          outs() << "Careful with one operand cmp Instruction. \n";
+          outs() << "Iterator Add Instruction: \n";
+          BC.printInstruction(outs(), addInst);
+          outs() << '\t'  << addInst << '\n';
+          outs() << "Iterator Reg: " << addReg.getReg() << "\n";
+          iterInstructionInd = it-loopLastBlockPtr->begin();
+          inductionRegNum = addReg.getReg();
+          outs() << "Iterator Step: " << addInst.getOperand(2).getImm() << "\n";
+          stride = addInst.getOperand(2).getImm();
+          if (cmpInst.getOperand(0).isImm()) {
+            outs() << "Iterator End: " << cmpInst.getOperand(0).getImm() << "\n";
+            setIterationEnd(cmpInst.getOperand(0).getImm());
+          } else {
+            // TODO: solve cmpInst.getOperand(0) is reg
+            outs() << "cmpInst.getOperand(0) is not Imm\n";
+          }
+          return true;
+        }
+        for (auto& cmpReg : cmpInst) {
+          if (addReg.isReg() && cmpReg.isReg() && addReg.getReg() == cmpReg.getReg() && addInst.getOperand(2).isImm()) {
+            outs() << "Iterator Add Instruction: \n";
+            BC.printInstruction(outs(), addInst);
+            outs() << '\t'  << addInst << '\n';
+            outs() << "Iterator Reg: " << addReg.getReg() << "\n";
+            iterInstructionInd = it-loopLastBlockPtr->begin();
+            inductionRegNum = addReg.getReg();
+            outs() << "Iterator Step: " << addInst.getOperand(2).getImm() << "\n";
+            stride = addInst.getOperand(2).getImm();
+            if (cmpInst.getOperand(1).isImm()) {
+              outs() << "Iterator End: " << cmpInst.getOperand(1).getImm() << "\n";
+              setIterationEnd(cmpInst.getOperand(1).getImm());
+            } else {
+              // TODO: solve cmpInst.getOperand(1) is reg
+              outs() << "cmpInst.getOperand(1) is not Imm\n";
+            }
+            return true;
+          }
+        }
+      }
+    // inc instruction
+    }else if (BC.MIB->isInc(inst)) {
+      auto& incInst = inst;
+      for (auto& addReg : incInst) {
+        for (auto& cmpReg : cmpInst) {
+          if (addReg.isReg() && cmpReg.isReg() && addReg.getReg() == cmpReg.getReg()) {
+            outs() << "Iterator Inc Instruction: \n";
+            BC.printInstruction(outs(), incInst);
+            outs() << '\t'  << incInst << '\n';
+            outs() << "Iterator Reg: " << addReg.getReg() << "\n";
+            iterInstructionInd = it-loopLastBlockPtr->begin();
+            inductionRegNum = addReg.getReg();
+            outs() << "Iterator Step: " << 1 << "\n";
+            stride = 1;
+            if (cmpInst.getOperand(1).isImm()) {
+              outs() << "Iterator End: " << cmpInst.getOperand(1).getImm() << "\n";
+              setIterationEnd(cmpInst.getOperand(1).getImm());
+            } else {
+              outs() << "cmpInst.getOperand(1) is not Imm\n";
+            }
+            return true;
+          }
+        }
+      }
+    // dec instruction
+    }else if (BC.MIB->isDec(inst)) {
+      auto& decInst = inst;
+      for (auto& addReg : decInst) {
+        for (auto& cmpReg : cmpInst) {
+          if (addReg.isReg() && cmpReg.isReg() && addReg.getReg() == cmpReg.getReg()) {
+            outs() << "Iterator Dec Instruction: \n";
+            BC.printInstruction(outs(), decInst);
+            outs() << '\t'  << decInst << '\n';
+            outs() << "Iterator Reg: " << addReg.getReg() << "\n";
+            iterInstructionInd = it-loopLastBlockPtr->begin();
+            inductionRegNum = addReg.getReg();
+            outs() << "Iterator Step: " << -1 << "\n";
+            stride = -1;
+            if (cmpInst.getOperand(1).isImm()) {
+              outs() << "Iterator End: " << cmpInst.getOperand(1).getImm() << "\n";
+              setIterationEnd(cmpInst.getOperand(1).getImm());
+            } else {
+              outs() << "cmpInst.getOperand(1) is not Imm\n";
+            }
+            return true;
+          }
+        }
+      }
+    }
+  }
+  outs() << "Iterator Instruction Not Found, maybe another add op code or iteration not exists.\n";
+  for (auto it=loopLastBlockPtr->rbegin()+2;it!=loopLastBlockPtr->rend();++it){
+    auto& inst = *it;
+    BC.printInstruction(outs(), inst);
+    outs() << inst << '\n';
+  }
+
+  // no stride
+  return false;
+}
+
+bool BinaryLoop::iterationAnalysis(){
+  if(!checkInductionReg()) return false;
+  auto& BC = getHeader()->getFunction()->getBinaryContext();
+
+  // find iterator begin in loop preheader
+  for (auto pre = getHeader()->pred_begin(); pre != getHeader()->pred_end(); ++pre) {
+    auto preHeader = *pre;
+    if (preHeader==getHeader()) continue;
+    // outs() << "Basic Block: " << preHeader->getName() << "\n";
+    
+    for(auto it = preHeader->rbegin(); it != preHeader->rend(); ++it) {
+      auto& preInst = *it; 
+      BC.printInstruction(outs(), preInst);
+      outs() << '\t' << preInst << '\n';
+
+      // find xorl instruction, xorl op code is 17818
+      if (preInst.getOpcode() == 17818 && preInst.getOperand(0).isReg() && preInst.getOperand(2).isReg()) {
+        auto& xorReg = preInst.getOperand(0);
+        auto& xorReg2 = preInst.getOperand(2);
+        if (xorReg.getReg() == xorReg2.getReg() && (xorReg.getReg() == inductionRegNum || xorReg.getReg() == regMap[inductionRegNum])) {
+          setIterationBegin(0);
+          outs() << "Iterator Begin: " << iterationBegin << "\n";
+          outs() << "Iterator xorl Instruction: \n";
+          BC.printInstruction(outs(), preInst);
+          outs() << '\t' << preInst << '\n';
+          return true;
+        }
+      }
+
+      // find movl instruction, movl op code is 1823,  movq op code is 1843
+      if ((preInst.getOpcode() == 1823 || preInst.getOpcode() == 1843 ) && preInst.getOperand(0).isReg() && preInst.getOperand(1).isImm()) {
+        // BC.printInstruction(outs(), preInst);
+        // outs() << '\t'  << preInst << '\n';
+          
+        auto& xorReg = preInst.getOperand(0);
+        if (xorReg.getReg() == inductionRegNum || xorReg.getReg() == regMap[inductionRegNum]) {
+          setIterationBegin(preInst.getOperand(1).getImm());
+          outs() << "Iterator Begin: " << iterationBegin << "\n";
+          outs() << "Iterator movl Instruction: \n";
+          BC.printInstruction(outs(), preInst);
+          outs() << '\t'  << preInst << '\n';
+          return true;
+        }
+      }
+    }
+    outs() << "xorl and movl instruction not found in loopHeader, maybe another init op code. " << "\n";
+    outs() << "Basic Block: " << preHeader->getName() << "\n";
+    for (auto& Inst : *preHeader) {
+      BC.printInstruction(outs(), Inst);
+    }
+    outs() << "Iterator Begin Not Found\n";
+  }
+
+  return true;
+}
+
+uint64_t BinaryLoop::getUnrollCount(){
+  return 5;
+}
+
+void BinaryLoop::loopUnroll(){
+
+  if(!iterationAnalysis()) {
+    outs()<<"Iteration Analysis Failed!\n";
+    return;
+  }
+  outs()<<"Iteration Analysis Success!\n";
+  // general loop unroll
+  uint64_t unrollCount = getUnrollCount();
+
+  auto& BC = getHeader()->getFunction()->getBinaryContext();
+
+  bool isRem = !(isBoundValid()&&(iterationEnd-iterationBegin)%unrollCount==0);
+
+  if(isRem){
+    
+  }
+  else{
+    
+    // // gather group of instructions
+    // std::vector<std::unique_ptr<BinaryBasicBlock>> newBasicBlockGroup{};
+    // outs() << "Original Group of Instructions: \n";
+    // for(auto it = getBlocks().begin(); it != getBlocks().end(); ++it) {
+    //   auto blockPtr = *it;
+    //   outs() << "Basic Block: " << blockPtr->getName() << "\n";
+    //   for (auto& inst : *blockPtr) {
+    //     BC.printInstruction(outs(), inst);
+    //     // outs() << '\t' << inst << '\n';
+    //   }
+    // }
+
+    uint64_t n = getHeader()->size();
+    auto iterInst = getHeader()->getInstructionAtIndex(iterInstructionInd);
+    auto jmpInst = getHeader()->getInstructionAtIndex(n-1);
+
+    std::vector<MCInst> originGroup;
+    for (int64_t i=0;i<n-2;++i){
+      if (i==iterInstructionInd) continue;
+      auto& inst = getHeader()->getInstructionAtIndex(i);
+      originGroup.emplace_back(inst);
+    }
+
+    // create new group of instructions
+    std::vector<std::vector<MCInst>> newGroups;
+    newGroups.push_back(originGroup);
+    for (int64_t i=1;i<unrollCount;++i){
+      std::vector<MCInst> newGroup;
+      for (auto& inst : originGroup) {
+        auto insertInst = MCInst(inst);
+        for (auto& op : insertInst) {
+          if (op.isReg() && (op.getReg() == regMap[inductionRegNum] || op.getReg() == inductionRegNum)) {
+            outs() << "related ins: " << "\n";
+            BC.printInstruction(outs(), insertInst);
+            outs() << '\t' << insertInst << '\n';
+            int64_t firstImmInd{0}, secondImmInd{0};
+            for (int64_t j=0;j<insertInst.getNumOperands();++j) {
+              if (insertInst.getOperand(j).isImm()) {
+                if (0==firstImmInd) {
+                  firstImmInd = j;
+                } else {
+                  secondImmInd = j;
+                }
+              }
+            }
+            if (0==firstImmInd || 0==secondImmInd) {
+              outs() << "related imm not found\n";
+              return;
+            }
+            outs() << "related imm indexs: " << firstImmInd << " " << secondImmInd << "\n";
+            int64_t base = insertInst.getOperand(firstImmInd).getImm();
+            outs() << "related imm base: " << base << "\n";
+            outs() << "related imm from: " << insertInst.getOperand(secondImmInd).getImm();
+            insertInst.getOperand(secondImmInd).setImm(insertInst.getOperand(secondImmInd).getImm() + stride * i * base);
+            outs() << " to: " << insertInst.getOperand(secondImmInd).getImm() << "\n";
+            // break;
+          // }else if(op.isReg() && (op.getReg() == 152 )){ // xmm0
+          //   op.setReg(op.getReg()+2*i);
+          }
+        }
+        newGroup.emplace_back(insertInst);
+      }
+      newGroups.emplace_back(newGroup);
+    }
+
+    // change step
+    // TODO: Here i got an imm overflow bug, but i don't know why, maybe somthing wrong in function rewrite
+    //      right add ins: add    $0x80,%rsi
+    // wrong real add ins: add    $0xffffff80,%rsi
+    stride *= unrollCount;
+    
+    // 435 is addq opcode
+    iterInst.clear();
+    iterInst.setOpcode(435);
+    iterInst.addOperand(MCOperand::createReg(inductionRegNum));
+    iterInst.addOperand(MCOperand::createReg(inductionRegNum));
+    iterInst.addOperand(MCOperand::createImm(stride));
+    // iterInst.getOperand(2).setImm(iteratorStep);
+
+    outs() << "Change Iterator Step: " << stride << "\n";
+    outs() << "New Iterator Add Instruction : \n";
+    BC.printInstruction(outs(), iterInst);
+    outs() << '\t' << iterInst << '\n';
+
+    // use original cmp instruction
+    auto cmpInst = getHeader()->getInstructionAtIndex(cmpInstructionInd);
+    // create new loop body
+    getHeader()->clear();
+    // for (int64_t i=0;i<newGroups[0].size();++i) {
+    //   for(int64_t j=0;j<unrollCount;++j){
+    //     getHeader()->insertInstruction(getHeader()->end(), newGroups[j][i]);
+    //   }
+    // }
+    for(auto&& newGroup: newGroups){
+      for(auto&& inst: newGroup){
+        getHeader()->insertInstruction(getHeader()->end(), inst);
+      }
+    }
+
+    getHeader()->insertInstruction(getHeader()->end(), iterInst);
+    getHeader()->insertInstruction(getHeader()->end(), cmpInst);
+    getHeader()->insertInstruction(getHeader()->end(), jmpInst);
+  }
+}
+
+// rax to eax, rdx to edx
+// rsi to esi
+// r12 to r12d, r13 to r13d, r14 to r14d
+std::unordered_map<int64_t, int64_t> BinaryLoop::regMap = {{51, 22}, {54, 25}, {56, 27},
+                                                            {60, 32}, {53, 24},
+                                                            {132, 268}, {133, 269}, {134, 270}};
+
 } // namespace bolt
 } // namespace llvm

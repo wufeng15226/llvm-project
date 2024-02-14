@@ -36,6 +36,28 @@ public:
 
   BinaryLoop() : LoopBase<BinaryBasicBlock, BinaryLoop>() {}
 
+  static std::unordered_map<int64_t, int64_t> regMap;
+
+  int64_t iterInstructionInd{-1};
+
+  int64_t cmpInstructionInd{-1};
+
+  // induction variable reg num
+  int64_t inductionRegNum{-1};
+
+  // iteration stride
+  int64_t stride{0};
+
+  // iteration start
+  int64_t iterationBegin{0};
+
+  bool iterationBeginValid{false};
+
+  // iteration end
+  int64_t iterationEnd{0};
+
+  bool iterationEndValid{false};
+
   // The total count of all the back edges of this loop.
   uint64_t TotalBackEdgeCount{0};
 
@@ -62,6 +84,30 @@ public:
   bool correlationAnalysis(std::vector<MCInst> &Instructions,
                            unsigned LoopIterReg, int64_t LoopUnrollFactor,
                            int64_t LoopUnrollStep, int64_t LoopUnrollStart);
+
+  void loopUnroll();
+
+  bool iterationAnalysis();
+
+  bool checkInductionReg();
+
+  bool checkCmpInstruction();
+
+  uint64_t getUnrollCount();
+
+  void setIterationBegin(int64_t num){
+    iterationBegin = num;
+    iterationBeginValid = true;
+  }
+
+  void setIterationEnd(int64_t num){
+    iterationEnd = num;
+    iterationEndValid = true;
+  }
+
+  bool isBoundValid(){
+    return iterationBeginValid && iterationEndValid;
+  }
 
 protected:
   friend class LoopInfoBase<BinaryBasicBlock, BinaryLoop>;

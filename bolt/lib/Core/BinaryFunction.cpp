@@ -4485,6 +4485,86 @@ void BinaryFunction::loopProfile(std::vector<int>& LoopProfileCount) {
   }
 }
 
+void BinaryFunction::loopUnroll2() {
+  if (!opts::shouldPrint(*this))
+    return;
+  if (isLoopFree()) 
+    return;
+
+  outs() << "---------------------------- Loop Unroll Begin for Function \"" << *this << "\" ----------------------------\n";
+  // outs() << "---------------------------- Print Begin for Function \"" << *this << "\" ----------------------------\n";
+  // print(outs());
+  // outs() << "---------------------------- Print End for Function \"" << *this << "\" ----------------------------\n";
+  
+  std::stack<BinaryLoop *> St;
+  for (BinaryLoop *L : *BLI)
+    St.push(L);
+  int loopCount = 0;
+  while (!St.empty()) {
+    BinaryLoop *L = St.top();
+    St.pop();
+
+    for (BinaryLoop *Inner : *L)
+      St.push(Inner);
+
+    outs() << "\n---Loop " << loopCount++ << ":\n";
+    auto preBB = L->getLoopPreheader();
+    for(auto preBasicBlockPtr: L->getHeader()->predecessors()){
+      if (preBasicBlockPtr==L->getHeader()) continue;
+      outs() << "predecessor Basic Block: " << preBasicBlockPtr->getName() << "\n";
+      if (!preBasicBlockPtr->empty()) {
+        for (auto& Inst : preBasicBlockPtr->Instructions) {
+          BC.printInstruction(outs(), Inst);
+        }
+      }
+    }
+
+    outs() << "---Before unroll\n";
+    
+    for(auto basicBlockPtr : L->getBlocks()){
+      outs() << "Basic Block: " << basicBlockPtr->getName() << "\n";
+      if (!basicBlockPtr->empty()) {
+        for (auto& Inst : basicBlockPtr->Instructions) {
+          BC.printInstruction(outs(), Inst);
+        }
+      }
+    }
+
+    if (hasValidProfile()) {
+      outs() << "Loop Count: " << L->TotalBackEdgeCount;
+      if((L->TotalBackEdgeCount)>=BC.MidLoopCountThreshold){
+        outs() << " loop unroll\n";
+      }else{
+        outs() << " loop reroll\n";
+        if (L->isInnermost()&&L->getBlocks().size() == 1) {
+          foldInnerloopWithOneBB(L);
+        }
+        continue;
+      }
+      
+    }
+
+    outs() << "---Unroll\n";
+
+    L->loopUnroll();
+
+    outs() << "---After unroll\n";
+
+    for(auto basicBlockPtr : L->getBlocks()){
+      outs() << "Basic Block: " << basicBlockPtr->getName() << "\n";
+      if (!basicBlockPtr->empty()) {
+        for (auto& Inst : basicBlockPtr->Instructions) {
+          BC.printInstruction(outs(), Inst);
+        }
+      }
+    }
+
+    outs() << "---Loop End\n\n";
+  }
+
+  outs() << "---------------------------- Loop Unroll End for Function \"" << *this << "\"----------------------------\n";
+}
+
 
 void BinaryFunction::loopUnroll() {
   if (!opts::shouldPrint(*this))
@@ -4839,7 +4919,11 @@ bool BinaryFunction::getIterator(BinaryLoop* L, int64_t& iteratorReg, int64_t& i
               outs() << "Iterator Begin: " << iteratorBegin << "\n";
               outs() << "Iterator xorl Instruction: \n";
               BC.printInstruction(outs(), preInst);
-              outs() << '\t'  << preInst << '\n';
+              outs() << '\t' << preInst << '\n';
+              outs() << "Basic Block: " << preHeader->getName() << "\n";
+              for (auto& Inst : *preHeader) {
+                BC.printInstruction(outs(), Inst);
+              }
               return true;
             }
           }
@@ -4861,6 +4945,10 @@ bool BinaryFunction::getIterator(BinaryLoop* L, int64_t& iteratorReg, int64_t& i
           }
         }
         outs() << "xorl and movl instruction not found in loopHeader, maybe another init op code. " << "\n";
+        outs() << "Basic Block: " << preHeader->getName() << "\n";
+        for (auto& Inst : *preHeader) {
+          BC.printInstruction(outs(), Inst);
+        }
         outs() << "Iterator Begin Not Found\n";
         return false;
       }

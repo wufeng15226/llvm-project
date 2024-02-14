@@ -20,7 +20,7 @@ namespace llvm {
 namespace bolt {
 
 bool LoopUnrollPass::runOnFunction(BinaryFunction &BF) {
-    BF.loopUnroll();
+    BF.loopUnroll2();
     return true;
 }
 

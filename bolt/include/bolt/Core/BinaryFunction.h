@@ -856,6 +856,9 @@ public:
   /// loop unroll.
   void loopUnroll();
 
+  /// Refactored loop unrol
+  void loopUnroll2();
+
   /// get unroll count while loop unrolling.
   uint64_t getUnrollCount(BinaryLoop* L, int64_t& iteratorBegin, int64_t& iteratorEnd, int64_t& iteratorStep) const;
 
