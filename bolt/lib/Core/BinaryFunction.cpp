@@ -4548,6 +4548,10 @@ void BinaryFunction::loopUnroll2() {
 
     L->loopUnroll();
 
+    if(L->isUnrolled){
+      outs() << "---Unroll Success!\n";
+    }
+
     outs() << "---After unroll\n";
 
     for(auto basicBlockPtr : L->getBlocks()){

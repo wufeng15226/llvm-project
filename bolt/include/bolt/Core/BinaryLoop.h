@@ -58,6 +58,11 @@ public:
 
   bool iterationEndValid{false};
 
+  bool isUnrolled{false};
+
+  static int testBBLabelCount;
+  static int remainLoopLabelCount;
+
   // The total count of all the back edges of this loop.
   uint64_t TotalBackEdgeCount{0};
 

@@ -139,6 +139,9 @@ namespace bolt {
 //   return false;
 // }
 
+int BinaryLoop::testBBLabelCount = 0;
+int BinaryLoop::remainLoopLabelCount = 0;
+
 bool BinaryLoop::GetLoopIterReg2(unsigned &LoopIterReg) {
   // Sometimes the operand in compare instruction isn't the loop
   // iteration register. So we can only find the loop iteration register in
@@ -1631,7 +1634,24 @@ bool BinaryLoop::iterationAnalysis(){
 }
 
 uint64_t BinaryLoop::getUnrollCount(){
-  return 5;
+  // return 2;
+  int64_t tripCount = (iterationEnd-iterationBegin)/stride;
+  int64_t unrollCount = tripCount;
+  
+  int64_t maxStep = 128;
+  while(unrollCount != 0 && maxStep <= abs(stride) * unrollCount) {
+    outs() << "Unroll Count: " << unrollCount << " too big for add instruction.\n";
+    if (tripCount % unrollCount == 0) unrollCount--;
+    while (unrollCount != 0 && tripCount % unrollCount != 0) {
+      unrollCount--;
+    }
+  }
+
+  if(unrollCount==0||tripCount%unrollCount) {
+    unrollCount = 1;
+  }
+  outs() << "Unroll Count: " << unrollCount << "\n";
+  return unrollCount;
 }
 
 void BinaryLoop::loopUnroll(){
@@ -1644,15 +1664,77 @@ void BinaryLoop::loopUnroll(){
   // general loop unroll
   uint64_t unrollCount = getUnrollCount();
 
-  auto& BC = getHeader()->getFunction()->getBinaryContext();
+  auto FuncPtr = getHeader()->getFunction();
+  auto& BC = FuncPtr->getBinaryContext();
 
-  bool isRem = !(isBoundValid()&&(iterationEnd-iterationBegin)%unrollCount==0);
+  bool isRem = !(isBoundValid()&&(iterationEnd-iterationBegin)%(stride*unrollCount)==0);
+
+  if(getBlocks().size() > 1) {
+    outs() << "MultiBB remin Loop Unroll is not supported yet! isRem: " << isRem << "\n";
+    return;
+  }
 
   if(isRem){
+    return;
+    outs() << "---remain loop unroll!\n";
+
+    // TODO: change loops which bound is not valid
+    // we will break this loop to three parts
+    // first part: a test BB to check if the iter is valid for the unrolled loop
+    // second part: the unrolled loop
+    // third part: the remain loop
+    // -> loop -> 
+    // -> testBB -> unrolled loop -> remain loop ->
+    //       |-> -> remain loop ->
+
+    // you can change code below as you want
+    // copy a remain loop from the original loop, in fact, the remain loop is just the same as the original loop
+    auto remainLoopSymbol = (BC.Ctx)->getOrCreateSymbol(".remainBB"+std::to_string(remainLoopLabelCount++));
+    auto remainLoop = FuncPtr->createBasicBlock(remainLoopSymbol);
+    getHeader()->moveAllSuccessorsTo(remainLoop.get());
+    getHeader()->addSuccessor(remainLoop.get());
+    remainLoop->replaceSuccessor(getHeader(), remainLoop.get());
+
+    for(auto& inst: *getHeader()){
+      remainLoop->addInstruction(inst);
+    }
+
+    uint64_t n = getHeader()->size();
+    auto jmpInst = getHeader()->getInstructionAtIndex(n-1);
+    auto cmpInst = getHeader()->getInstructionAtIndex(cmpInstructionInd);
+    // TODO: change iter reg value to compare and jump, better find a unused reg to compute
+    // a possible way to do this is create a new BB to add iterate value and reset the iter reg
+    auto iterInst = getHeader()->getInstructionAtIndex(iterInstructionInd);
+    iterInst.clear();
+    iterInst.setOpcode(435);
+    iterInst.addOperand(MCOperand::createReg(inductionRegNum));
+    iterInst.addOperand(MCOperand::createReg(inductionRegNum));
+    iterInst.addOperand(MCOperand::createImm(stride*unrollCount));
+
+    outs() << "jump Instruction: \n";
+    BC.printInstruction(outs(), jmpInst);
+    outs() << "cmp Instruction: \n";
+    BC.printInstruction(outs(), cmpInst);
+
+    getHeader()->clear();
+    getHeader()->insertInstruction(getHeader()->end(), iterInst);
+    getHeader()->insertInstruction(getHeader()->end(), cmpInst);
+    getHeader()->insertInstruction(getHeader()->end(), jmpInst);
+
+    // TODO: unroll loop
+    // auto unrolled_loop = FuncPtr->createBasicBlock((BC.Ctx)->createTempSymbol("unrolledBB"));
+        
+    addBasicBlockToLoop(remainLoop.get(), const_cast<BinaryLoopInfo &>(FuncPtr->getLoopInfo()));
+
+    // BBGroup.emplace_back(std::move(unrolled_loop));
+    std::vector<std::unique_ptr<BinaryBasicBlock>> BBGroup;
+    BBGroup.emplace_back(std::move(remainLoop));
+    FuncPtr->insertBasicBlocks(getHeader(), std::move(BBGroup));
     
+    // isUnrolled = true;
   }
   else{
-    
+    //TODO: mutiBB
     // // gather group of instructions
     // std::vector<std::unique_ptr<BinaryBasicBlock>> newBasicBlockGroup{};
     // outs() << "Original Group of Instructions: \n";
@@ -1755,6 +1837,7 @@ void BinaryLoop::loopUnroll(){
     getHeader()->insertInstruction(getHeader()->end(), iterInst);
     getHeader()->insertInstruction(getHeader()->end(), cmpInst);
     getHeader()->insertInstruction(getHeader()->end(), jmpInst);
+    isUnrolled = true;
   }
 }
 
