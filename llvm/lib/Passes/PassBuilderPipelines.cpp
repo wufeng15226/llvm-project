@@ -197,9 +197,9 @@ static cl::opt<bool> EnableLoopInterchange(
     "enable-loopinterchange", cl::init(false), cl::Hidden,
     cl::desc("Enable the experimental LoopInterchange Pass"));
 
-static cl::opt<bool> EnableUnrollAndJam("enable-unroll-and-jam",
-                                        cl::init(false), cl::Hidden,
-                                        cl::desc("Enable Unroll And Jam Pass"));
+// static cl::opt<bool> EnableUnrollAndJam("enable-unroll-and-jam",
+//                                         cl::init(false), cl::Hidden,
+//                                         cl::desc("Enable Unroll And Jam Pass"));
 
 static cl::opt<bool> EnableLoopFlatten("enable-loop-flatten", cl::init(false),
                                        cl::Hidden,
@@ -453,11 +453,11 @@ PassBuilder::buildO1FunctionSimplificationPipeline(OptimizationLevel Level,
   // inaccurate. The normal unroller doesn't pay attention to forced full unroll
   // attributes so we need to make sure and allow the full unroll pass to pay
   // attention to it.
-  if (Phase != ThinOrFullLTOPhase::ThinLTOPreLink || !PGOOpt ||
-      PGOOpt->Action != PGOOptions::SampleUse)
-    LPM2.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
-                                    /* OnlyWhenForced= */ !PTO.LoopUnrolling,
-                                    PTO.ForgetAllSCEVInLoopUnroll));
+  // if (Phase != ThinOrFullLTOPhase::ThinLTOPreLink || !PGOOpt ||
+  //     PGOOpt->Action != PGOOptions::SampleUse)
+  //   LPM2.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
+  //                                   /* OnlyWhenForced= */ !PTO.LoopUnrolling,
+  //                                   PTO.ForgetAllSCEVInLoopUnroll));
 
   invokeLoopOptimizerEndEPCallbacks(LPM2, Level);
 
@@ -632,11 +632,11 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
   // inaccurate. The normal unroller doesn't pay attention to forced full unroll
   // attributes so we need to make sure and allow the full unroll pass to pay
   // attention to it.
-  if (Phase != ThinOrFullLTOPhase::ThinLTOPreLink || !PGOOpt ||
-      PGOOpt->Action != PGOOptions::SampleUse)
-    LPM2.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
-                                    /* OnlyWhenForced= */ !PTO.LoopUnrolling,
-                                    PTO.ForgetAllSCEVInLoopUnroll));
+  // if (Phase != ThinOrFullLTOPhase::ThinLTOPreLink || !PGOOpt ||
+  //     PGOOpt->Action != PGOOptions::SampleUse)
+  //   LPM2.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
+  //                                   /* OnlyWhenForced= */ !PTO.LoopUnrolling,
+  //                                   PTO.ForgetAllSCEVInLoopUnroll));
 
   invokeLoopOptimizerEndEPCallbacks(LPM2, Level);
 
@@ -1154,12 +1154,12 @@ void PassBuilder::addVectorPasses(OptimizationLevel Level,
     // combiner for cleanup here so that the unrolling and LICM can be pipelined
     // across the loop nests.
     // We do UnrollAndJam in a separate LPM to ensure it happens before unroll
-    if (EnableUnrollAndJam && PTO.LoopUnrolling)
-      FPM.addPass(createFunctionToLoopPassAdaptor(
-          LoopUnrollAndJamPass(Level.getSpeedupLevel())));
-    FPM.addPass(LoopUnrollPass(LoopUnrollOptions(
-        Level.getSpeedupLevel(), /*OnlyWhenForced=*/!PTO.LoopUnrolling,
-        PTO.ForgetAllSCEVInLoopUnroll)));
+    // if (EnableUnrollAndJam && PTO.LoopUnrolling)
+    //   FPM.addPass(createFunctionToLoopPassAdaptor(
+    //       LoopUnrollAndJamPass(Level.getSpeedupLevel())));
+    // FPM.addPass(LoopUnrollPass(LoopUnrollOptions(
+    //     Level.getSpeedupLevel(), /*OnlyWhenForced=*/!PTO.LoopUnrolling,
+    //     PTO.ForgetAllSCEVInLoopUnroll)));
     FPM.addPass(WarnMissedTransformationsPass());
     // Now that we are done with loop unrolling, be it either by LoopVectorizer,
     // or LoopUnroll passes, some variable-offset GEP's into alloca's could have
@@ -1245,13 +1245,13 @@ void PassBuilder::addVectorPasses(OptimizationLevel Level,
     // combiner for cleanup here so that the unrolling and LICM can be pipelined
     // across the loop nests.
     // We do UnrollAndJam in a separate LPM to ensure it happens before unroll
-    if (EnableUnrollAndJam && PTO.LoopUnrolling) {
-      FPM.addPass(createFunctionToLoopPassAdaptor(
-          LoopUnrollAndJamPass(Level.getSpeedupLevel())));
-    }
-    FPM.addPass(LoopUnrollPass(LoopUnrollOptions(
-        Level.getSpeedupLevel(), /*OnlyWhenForced=*/!PTO.LoopUnrolling,
-        PTO.ForgetAllSCEVInLoopUnroll)));
+    // if (EnableUnrollAndJam && PTO.LoopUnrolling) {
+    //   FPM.addPass(createFunctionToLoopPassAdaptor(
+    //       LoopUnrollAndJamPass(Level.getSpeedupLevel())));
+    // }
+    // FPM.addPass(LoopUnrollPass(LoopUnrollOptions(
+    //     Level.getSpeedupLevel(), /*OnlyWhenForced=*/!PTO.LoopUnrolling,
+    //     PTO.ForgetAllSCEVInLoopUnroll)));
     FPM.addPass(WarnMissedTransformationsPass());
     // Now that we are done with loop unrolling, be it either by LoopVectorizer,
     // or LoopUnroll passes, some variable-offset GEP's into alloca's could have
@@ -1865,9 +1865,9 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   // FIXME: Add loop interchange.
 
   // Unroll small loops and perform peeling.
-  LPM.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
-                                 /* OnlyWhenForced= */ !PTO.LoopUnrolling,
-                                 PTO.ForgetAllSCEVInLoopUnroll));
+  // LPM.addPass(LoopFullUnrollPass(Level.getSpeedupLevel(),
+  //                                /* OnlyWhenForced= */ !PTO.LoopUnrolling,
+  //                                PTO.ForgetAllSCEVInLoopUnroll));
   // The loop passes in LPM (LoopFullUnrollPass) do not preserve MemorySSA.
   // *All* loop passes must preserve it, in order to be able to use it.
   MainFPM.addPass(createFunctionToLoopPassAdaptor(
